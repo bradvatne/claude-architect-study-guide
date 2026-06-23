@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep Dives — code &amp; scenarios · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+<style>
+  .ddgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+  @media(max-width:760px){.ddgrid{grid-template-columns:1fr}}
+  a.dd{display:block;background:#0b0f14;border:1px solid var(--border);border-radius:10px;
+    padding:15px 17px;transition:.15s;text-decoration:none}
+  a.dd:hover{border-color:var(--accent);transform:translateY(-2px);text-decoration:none}
+  a.dd .t{color:var(--accent-2);font-weight:700;font-size:15px}
+  a.dd .d{color:var(--muted);font-size:13.5px;margin-top:3px}
+  .domhead{display:flex;align-items:center;gap:10px;margin:22px 0 2px}
+  .domhead .tag{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--accent);background:var(--accent-soft);padding:4px 10px;border-radius:99px}
+  .domhead h2{font-size:18px}
+  .domhead .w{margin-left:auto;color:var(--dim);font-size:13px}
+</style>
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">12 deep dives · code + scenarios</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">Hands-on layer</div>
+    <h1>Deep Dives</h1>
+    <p>One focused page per topic — annotated, runnable sample code (verified against the current Claude API /
+       Agent SDK reference), an interactive widget, and a “how this shows up on the exam” mapping. Grouped by domain
+       and ordered by exam weight.</p>
+  </div>
+
+  <div class="card">
+    <div class="domhead"><span class="tag">D1</span><h2>Agentic Architecture &amp; Orchestration</h2><span class="w">27%</span></div>
+    <div class="ddgrid">
+      <a class="dd" href="stop-reason.html"><div class="t">🔁 The agentic loop &amp; <code>stop_reason</code></div><div class="d">The loop is driven by stop_reason — full tool-use loop in Python, TS, Go &amp; cURL, with a step-through trace and real use-cases.</div></a>
+      <a class="dd" href="subagents.html"><div class="t">🕸️ Subagents &amp; the coordinator pattern</div><div class="d">Task tool, isolated context, parallel = multiple Task calls in one response, and why decomposition bugs are the coordinator’s fault.</div></a>
+      <a class="dd" href="hooks-gates.html"><div class="t">🚧 Deterministic gates &amp; hooks</div><div class="d">Programmatic enforcement for must-hold rules vs. prompt guidance — with a live refund-gate simulator.</div></a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="domhead"><span class="tag">D2</span><h2>Tool Design &amp; MCP Integration</h2><span class="w">18%</span></div>
+    <div class="ddgrid">
+      <a class="dd" href="tool-design.html"><div class="t">🔧 Tool design — descriptions, tool_choice, errors</div><div class="d">Descriptions are the primary selection lever; the four tool_choice forms; structured error categories. Includes a tool-router demo.</div></a>
+      <a class="dd" href="mcp.html"><div class="t">🔌 MCP integration</div><div class="d">Tools vs. resources, community vs. custom servers, .mcp.json vs ~/.claude.json, ${ENV_VAR} secrets.</div></a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="domhead"><span class="tag">D3</span><h2>Claude Code Configuration &amp; Workflows</h2><span class="w">20%</span></div>
+    <div class="ddgrid">
+      <a class="dd" href="claude-md.html"><div class="t">📂 CLAUDE.md, rules, commands &amp; skills</div><div class="d">The memory hierarchy, path-specific .claude/rules/, project vs personal commands, skills vs always-loaded memory. “Where does this go?” quiz.</div></a>
+      <a class="dd" href="claude-code-ci.html"><div class="t">⚙️ Claude Code in CI / headless</div><div class="d">-p/--print fixes the hang, --output-format json for parseable findings, independent review. Live CLI command builder.</div></a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="domhead"><span class="tag">D4</span><h2>Prompt Engineering &amp; Structured Output</h2><span class="w">20%</span></div>
+    <div class="ddgrid">
+      <a class="dd" href="structured-output.html"><div class="t">🧱 Structured output &amp; extraction</div><div class="d">tool_use + JSON schema kills syntax not semantics; nullable fields prevent fabrication. Syntax-vs-semantics demo.</div></a>
+      <a class="dd" href="batches.html"><div class="t">📦 Message Batches API</div><div class="d">50% cheaper, ≤24h, no SLA, no multi-turn tools, custom_id. Batch-or-sync decider.</div></a>
+      <a class="dd" href="prompt-engineering.html"><div class="t">✍️ Prompt engineering for judgment</div><div class="d">Explicit criteria &gt; vague, few-shot that shows reasoning, retry-with-feedback’s limits, multi-pass &gt; bigger window.</div></a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="domhead"><span class="tag">D5</span><h2>Context Management &amp; Reliability</h2><span class="w">15%</span></div>
+    <div class="ddgrid">
+      <a class="dd" href="context-management.html"><div class="t">🧩 Context management</div><div class="d">Lost-in-the-middle, the persistent “case facts” block, trimming tool output, compaction. Attention-map visualizer.</div></a>
+      <a class="dd" href="reliability.html"><div class="t">🛡️ Escalation, errors &amp; provenance</div><div class="d">When to escalate (and when not), structured error propagation, claim→source provenance, segment-level accuracy. Escalate-or-not tester.</div></a>
+    </div>
+  </div>
+
+  <div class="footer">
+    Code verified against the current Claude API / Anthropic SDK reference · Part of the CCA Foundations interactive study guide.
+  </div>
+</div>
+</body>
+</html>

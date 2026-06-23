@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Agentic Loop &amp; stop_reason — in practice · CCA Foundations</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel-2:#1c232d; --border:#2a323d;
+    --txt:#e6edf3; --muted:#9aa7b5; --dim:#6b7785;
+    --accent:#d6753b; --accent-2:#e89b6c; --accent-soft:#3a2417;
+    --good:#3fb950; --good-soft:#12251a; --bad:#f85149; --bad-soft:#2a1416;
+    --blue:#58a6ff; --purple:#bc8cff; --yellow:#e3b341; --green-tok:#7ee787;
+    --radius:12px; --shadow:0 8px 30px rgba(0,0,0,.35);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--sans);line-height:1.65;font-size:15.5px}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em;background:var(--panel-2);border:1px solid var(--border);
+    padding:1px 6px;border-radius:6px;color:var(--accent-2)}
+  kbd{font-family:var(--mono);font-size:.8em;background:var(--panel-2);border:1px solid var(--border);
+    border-bottom-width:2px;padding:1px 6px;border-radius:5px}
+  h1,h2,h3{line-height:1.25;margin:0}
+
+  .main{max-width:940px;margin:0 auto;padding:30px 28px 120px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px;
+    padding-bottom:16px;border-bottom:1px solid var(--border)}
+  .topbar .back{font-size:14px;color:var(--muted)}
+  .topbar .back:hover{color:var(--accent-2)}
+  .topbar .badge{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--accent);background:var(--accent-soft);padding:5px 11px;border-radius:99px}
+
+  .pagehead{margin-bottom:24px}
+  .pagehead .eyebrow{color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+  .pagehead h1{font-size:30px;margin:8px 0 8px}
+  .pagehead p{color:var(--muted);max-width:760px;font-size:15.5px}
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px;margin-bottom:20px}
+  .card h2{font-size:20px;margin-bottom:6px}
+  .card h2 .n{color:var(--accent);margin-right:8px}
+  .card h3{font-size:15px;margin:18px 0 8px;color:var(--accent-2)}
+  .lead{color:var(--muted)}
+
+  /* stop_reason table */
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+  tbody tr:hover{background:var(--panel-2)}
+  td code{white-space:nowrap}
+  .row-loop td:first-child code{color:var(--yellow)}
+  .row-stop td:first-child code{color:var(--good)}
+  .row-pause td:first-child code{color:var(--blue)}
+  .row-bad td:first-child code{color:var(--bad)}
+
+  /* callouts */
+  .callout{border-radius:var(--radius);padding:15px 18px;margin:16px 0;border-left:4px solid}
+  .callout .h{font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .callout.tip{background:var(--good-soft);border-color:var(--good)} .callout.tip .h{color:var(--good)}
+  .callout.warn{background:var(--bad-soft);border-color:var(--bad)} .callout.warn .h{color:var(--bad)}
+  .callout.key{background:var(--accent-soft);border-color:var(--accent)} .callout.key .h{color:var(--accent-2)}
+  .callout.note{background:#10243d33;border-color:var(--blue)} .callout.note .h{color:var(--blue)}
+  .callout p{margin:4px 0 0}
+
+  /* language tabs */
+  .tabs{display:flex;gap:6px;margin-bottom:0}
+  .tabs button{background:var(--panel);border:1px solid var(--border);border-bottom:none;color:var(--muted);
+    padding:8px 16px;border-radius:9px 9px 0 0;cursor:pointer;font-size:13.5px;font-family:inherit;font-weight:600}
+  .tabs button.active{background:#0b0f14;color:var(--accent-2);border-color:var(--accent)}
+  .codewrap{background:#0b0f14;border:1px solid var(--accent);border-radius:0 10px 10px 10px;overflow:hidden}
+  pre{margin:0;padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.6}
+  pre code{background:none;border:none;padding:0;color:#c9d1d9;font-size:13px;white-space:pre}
+  .cm{color:#6b7785;font-style:italic}      /* comment */
+  .kw{color:#ff7b72}                          /* keyword */
+  .st{color:#a5d6ff}                          /* string */
+  .fn{color:#d2a8ff}                          /* function */
+  .nm{color:#79c0ff}                          /* number / const */
+  .hl{background:rgba(214,117,59,.16);display:block;margin:0 -20px;padding:0 20px;border-left:2px solid var(--accent)}
+
+  /* annotated step list */
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0}
+  ol.steps li{position:relative;padding:12px 0 12px 46px;border-bottom:1px solid rgba(42,50,61,.5)}
+  ol.steps li:last-child{border:none}
+  ol.steps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:12px;
+    width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent-2);
+    display:grid;place-items:center;font-weight:800;font-size:14px}
+  ol.steps li b{color:var(--txt)}
+  ol.steps li span{color:var(--muted)}
+
+  /* interactive trace */
+  .trace{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:760px){.trace{grid-template-columns:1fr}}
+  .trace-panel{background:#0b0f14;border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+  .trace-panel h4{margin:0 0 10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+  .msg{font-family:var(--mono);font-size:12.5px;border-radius:7px;padding:8px 11px;margin-bottom:7px;border:1px solid var(--border);
+    animation:pop .3s ease}
+  @keyframes pop{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+  .msg .role{font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:2px}
+  .msg.user{background:#10243d22}.msg.user .role{color:var(--blue)}
+  .msg.assistant{background:var(--accent-soft)}.msg.assistant .role{color:var(--accent-2)}
+  .msg.toolres{background:var(--good-soft)}.msg.toolres .role{color:var(--good)}
+  .msg .body{color:var(--muted)}
+  .sr{font-family:var(--mono);font-size:13px;padding:10px 14px;border-radius:8px;margin-bottom:10px;
+    border:1px solid;display:flex;align-items:center;gap:10px}
+  .sr.tool_use{background:rgba(227,179,65,.1);border-color:var(--yellow);color:var(--yellow)}
+  .sr.end_turn{background:var(--good-soft);border-color:var(--good);color:var(--good)}
+  .sr .lbl{color:var(--dim);font-style:normal}
+  .trace-controls{display:flex;align-items:center;gap:12px;margin-top:14px}
+  .trace-controls button{background:var(--panel);border:1px solid var(--border);color:var(--txt);
+    padding:9px 18px;border-radius:9px;cursor:pointer;font-size:14px;font-family:inherit;font-weight:600}
+  .trace-controls button:hover:not(:disabled){border-color:var(--accent);color:var(--accent-2)}
+  .trace-controls button:disabled{opacity:.4;cursor:default}
+  .trace-step-label{color:var(--muted);font-size:13.5px}
+  .narrate{min-height:24px;color:var(--accent-2);font-size:14px;font-weight:600;margin-top:6px}
+
+  .footer{color:var(--dim);font-size:12.5px;text-align:center;margin-top:36px;padding-top:18px;border-top:1px solid var(--border)}
+  .pill{display:inline-block;background:var(--panel-2);border:1px solid var(--border);border-radius:99px;
+    padding:2px 10px;font-size:12px;color:var(--muted);margin:2px 3px}
+</style>
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D1 · Orchestration · 27%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">The single fact the exam keeps testing</div>
+    <h1>The agentic loop is driven by <code>stop_reason</code></h1>
+    <p>Not by parsing the assistant's text. Not by an arbitrary iteration cap. You call the model, read
+       <code>stop_reason</code>, and branch: if it’s <code>tool_use</code> you execute the tools and loop;
+       if it’s <code>end_turn</code> you’re done. This page shows the <em>actual</em> code that implements that,
+       in four languages, with every line that matters annotated.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">ℹ️ Verified against the Claude API reference</div>
+    <p>Model id, the <code>stop_reason</code> values, the loop shape, and the tool-result message format below
+       are taken from the current Anthropic SDK docs — not recalled from memory. Default model
+       <code>claude-opus-4-8</code>, <code>max_tokens</code> 16000 for blocking calls.</p>
+  </div>
+
+  <!-- ===== STOP REASONS ===== -->
+  <div class="card">
+    <h2><span class="n">1</span>Every value <code>stop_reason</code> can take</h2>
+    <p class="lead">The whole loop hinges on this field. Memorize which ones <b>continue the loop</b>, which <b>end it</b>, and which need <b>special handling</b>.</p>
+    <table>
+      <thead><tr><th>Value</th><th>Meaning</th><th>What you do</th></tr></thead>
+      <tbody>
+        <tr class="row-loop"><td><code>tool_use</code></td><td>Claude wants to call one or more tools.</td><td><b>Execute the tools, append results, loop again.</b></td></tr>
+        <tr class="row-stop"><td><code>end_turn</code></td><td>Claude finished its response naturally.</td><td><b>Break the loop</b> — read the final text.</td></tr>
+        <tr class="row-stop"><td><code>max_tokens</code></td><td>Hit the <code>max_tokens</code> limit mid-response.</td><td>Increase <code>max_tokens</code> or stream; output is truncated.</td></tr>
+        <tr class="row-stop"><td><code>stop_sequence</code></td><td>Hit one of your custom stop sequences.</td><td>Done — inspect which sequence fired.</td></tr>
+        <tr class="row-pause"><td><code>pause_turn</code></td><td>A <em>server-side</em> tool loop hit its iteration limit (agentic flows).</td><td>Re-send the assistant turn to resume — <b>do not</b> add a “Continue” message.</td></tr>
+        <tr class="row-bad"><td><code>refusal</code></td><td>Claude refused for safety reasons.</td><td>Surface it; check <code>stop_details</code>. Don’t retry the same prompt.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout warn" style="margin-top:18px">
+      <div class="h">🚫 The named anti-patterns</div>
+      <p>Driving the loop by <b>parsing the assistant’s text</b> for phrases, or capping iterations with an
+        <b>arbitrary number</b>, are both exam distractors. The loop terminates when <code>stop_reason != "tool_use"</code> — that’s the contract.</p>
+    </div>
+  </div>
+
+  <!-- ===== THE LOOP CODE ===== -->
+  <div class="card">
+    <h2><span class="n">2</span>The manual agentic loop — full code</h2>
+    <p class="lead">Pick your language. This is the fine-grained manual loop (the SDKs also offer an automatic “tool runner”, but the exam tests that you understand <em>this</em>).</p>
+
+    <div class="tabs" id="tabs">
+      <button data-lang="py" class="active">Python</button>
+      <button data-lang="ts">TypeScript</button>
+      <button data-lang="go">Go</button>
+      <button data-lang="curl">cURL</button>
+    </div>
+    <div class="codewrap"><pre id="codeblock"></pre></div>
+
+    <h3>What each numbered step is doing</h3>
+    <ol class="steps">
+      <li><b>Seed the history.</b> <span>The first message is always <code>role: "user"</code>. The API is stateless — you resend the full <code>messages</code> array every call.</span></li>
+      <li><b>Call the model with the tools.</b> <span>Same <code>tools</code> array every iteration. Claude decides whether to call one.</span></li>
+      <li><b>Branch on <code>stop_reason</code>.</b> <span>If it’s <code>end_turn</code>, break — Claude is done. This is the loop’s exit condition, not text inspection.</span></li>
+      <li><b>Append the assistant turn <em>verbatim</em>.</b> <span>Push the whole <code>response.content</code> (it contains the <code>tool_use</code> blocks). Appending only the text would lose them and the next call would 400.</span></li>
+      <li><b>Execute every tool the model asked for.</b> <span>Claude can request multiple tools in one turn (parallel tool use). Run them all.</span></li>
+      <li><b>Send results back as one user message.</b> <span>Each <code>tool_result</code> must carry the matching <code>tool_use_id</code>. All results for the turn go in a single <code>user</code> message.</span></li>
+      <li><b>Loop.</b> <span>Back to step 2 with the grown history. Claude now sees the tool outputs and either calls more tools or finishes.</span></li>
+    </ol>
+  </div>
+
+  <!-- ===== INTERACTIVE TRACE ===== -->
+  <div class="card">
+    <h2><span class="n">3</span>Watch the loop run</h2>
+    <p class="lead">User asks: <code>"What's the weather in Paris and Tokyo?"</code> — a two-tool request. Step through and watch <code>stop_reason</code> decide whether to continue.</p>
+
+    <div class="trace">
+      <div class="trace-panel">
+        <h4>messages[] — the growing history</h4>
+        <div id="msgs"></div>
+      </div>
+      <div class="trace-panel">
+        <h4>Last response.stop_reason</h4>
+        <div id="srbox"></div>
+        <div class="narrate" id="narrate"></div>
+      </div>
+    </div>
+
+    <div class="trace-controls">
+      <button id="stepBtn">Step ▶</button>
+      <button id="resetTrace">Reset</button>
+      <span class="trace-step-label" id="stepLabel">Iteration 0 — not started</span>
+    </div>
+  </div>
+
+  <!-- ===== USE CASES ===== -->
+  <div class="card">
+    <h2><span class="n">4</span>Where the loop actually gets used</h2>
+    <p class="lead">Every one of these is the <em>same</em> loop — Claude requests a tool, your code runs it, you feed the result back, and it terminates on <code>end_turn</code>. Only the tools change.</p>
+    <table>
+      <thead><tr><th>Scenario</th><th>What the loop does</th><th>Exam mapping</th></tr></thead>
+      <tbody>
+        <tr><td><b>Customer-support agent</b></td><td><code>look_up_order</code> → <code>check_refund_policy</code> → (gate) <code>issue_refund</code>. Several tool round-trips until the case resolves, then <code>end_turn</code>.</td><td>Scenario 1 · D1/D2/D5</td></tr>
+        <tr><td><b>Multi-agent research</b></td><td>The coordinator loops, dispatching <code>Task</code> subagents; <em>each subagent runs its own</em> tool-use loop and returns a result.</td><td>Scenario 3 · D1</td></tr>
+        <tr><td><b>Coding / dev-productivity agent</b></td><td><code>grep</code>/<code>glob</code> → <code>read</code> → <code>edit</code> → <code>run_tests</code> → react to failures → edit again. Loops until tests pass.</td><td>Scenario 4 · D1/D2</td></tr>
+        <tr><td><b>Structured extraction + enrichment</b></td><td>Call lookup tools to fill missing fields; loop until the record is complete (or a field is provably absent → return <code>null</code>).</td><td>Scenario 6 · D4</td></tr>
+        <tr><td><b>Computer use / browser automation</b></td><td>screenshot → click/type → screenshot → … each action is a tool call; the loop runs until the task is done.</td><td>D1/D2</td></tr>
+      </tbody>
+    </table>
+    <div class="callout key">
+      <div class="h">🎯 The through-line</div>
+      <p>In all of them <b>your code (the harness) owns tool execution and the gates</b>. Claude decides <em>what</em> to call; <code>stop_reason</code> decides <em>whether the loop continues</em>. A deterministic gate before a side-effecting tool (refund, deploy, delete) lives right inside this loop.</p>
+    </div>
+  </div>
+
+  <!-- ===== LAYERS ===== -->
+  <div class="card">
+    <h2><span class="n">5</span>This loop vs. the SDK tool runner vs. the <code>/loop</code> command</h2>
+    <p class="lead">A common mix-up — three different “loops” at three different layers. Only the first two are agentic tool-use loops at all.</p>
+    <table>
+      <thead><tr><th>Mechanism</th><th>Layer</th><th>Reach for it when…</th></tr></thead>
+      <tbody>
+        <tr class="row-loop"><td><b>Manual agentic loop</b> <span style="color:var(--dim)">(this page)</span></td><td>Your application code, against the Claude API.</td><td>You need fine-grained control — human-in-the-loop approval gates, custom logging, conditional tool execution.</td></tr>
+        <tr class="row-stop"><td><b>SDK tool runner</b> — <code>tool_runner()</code> / <code>toolRunner()</code></td><td>An Anthropic SDK helper that runs <em>exactly this loop</em> for you and stops when <code>stop_reason</code> is no longer <code>tool_use</code>.</td><td>You want the loop handled automatically and don’t need to intercept each step. The default for most apps.</td></tr>
+        <tr class="row-bad"><td><b>Claude Code <code>/loop</code></b></td><td>A Claude Code <em>harness scheduler</em> — re-runs a whole prompt or skill on an interval.</td><td>Recurring tasks (“run <code>/triage</code> every 5m”). <b>Not</b> an agentic tool-use loop — wrong layer, can’t substitute for the two above.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout note">
+      <div class="h">ℹ️ Why this page shows the manual loop</div>
+      <p>The exam tests that you understand the <code>stop_reason</code> mechanism itself, so we hand-write it. In a real app you’d usually reach for the SDK <b>tool runner</b> and write the manual loop only for the control cases above. <code>/loop</code> is unrelated to either.</p>
+    </div>
+  </div>
+
+  <!-- ===== EXAM CONNECTION ===== -->
+  <div class="card">
+    <h2><span class="n">6</span>How this shows up on the exam</h2>
+    <div class="callout key">
+      <div class="h">🎯 Scenario → answer</div>
+      <p>“An agent gets stuck in an infinite loop / never stops calling tools / stops too early.” The right fix is
+        almost always <b>drive termination off <code>stop_reason</code></b>, not a regex on the reply and not a hard
+        iteration counter.</p>
+    </div>
+    <ul style="margin:10px 0;padding-left:20px;color:var(--txt)">
+      <li style="margin:6px 0">Loop control = <code>stop_reason</code> (<code>"tool_use"</code> vs <code>"end_turn"</code>). Text-parsing and fixed caps are distractors.</li>
+      <li style="margin:6px 0">Always append the full assistant <code>content</code> to history — preserves the <code>tool_use</code> blocks.</li>
+      <li style="margin:6px 0">Every <code>tool_result</code> needs its matching <code>tool_use_id</code>; multiple results ride in one user message.</li>
+      <li style="margin:6px 0"><code>pause_turn</code> is the server-side-tool resume signal — re-send, don’t inject “Continue.”</li>
+      <li style="margin:6px 0">For <b>subagents</b>: spawning happens via the <b>Task</b> tool, and parallel subagents = multiple Task calls in one response. Same loop, the “tool” is just another agent.</li>
+    </ul>
+    <a class="pill" href="index.html#d1">→ D1 module</a>
+    <a class="pill" href="index.html#flash">→ D1 flashcards</a>
+    <a class="pill" href="index.html#quiz">→ Scenario quiz</a>
+  </div>
+
+  <div class="footer">
+    Code verified against the current Claude API / Anthropic SDK reference · Part of the CCA Foundations interactive study guide.
+  </div>
+</div>
+
+<script>
+/* ============ CODE SAMPLES (verified shapes) ============ */
+/* Simple span-based highlighting; content is escaped where needed. */
+const CODE = {
+py:`<span class="kw">import</span> anthropic
+
+client = anthropic.<span class="fn">Anthropic</span>()
+tools  = [...]              <span class="cm"># your tool definitions</span>
+<span class="cm"># 1. First message is always role "user"</span>
+messages = [{<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: user_input}]
+
+<span class="kw">while</span> <span class="nm">True</span>:
+<span class="hl">    <span class="cm"># 2. Call the model with the tools</span>
+    response = client.messages.<span class="fn">create</span>(
+        model=<span class="st">"claude-opus-4-8"</span>,
+        max_tokens=<span class="nm">16000</span>,
+        tools=tools,
+        messages=messages,
+    )</span>
+<span class="hl">    <span class="cm"># 3. Done? stop_reason — NOT text parsing, NOT a counter</span>
+    <span class="kw">if</span> response.stop_reason == <span class="st">"end_turn"</span>:
+        <span class="kw">break</span></span>
+
+    <span class="cm"># pause_turn: server-side tool hit its limit — re-send to resume</span>
+    <span class="kw">if</span> response.stop_reason == <span class="st">"pause_turn"</span>:
+        messages = [
+            {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: user_input},
+            {<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>: response.content},
+        ]
+        <span class="kw">continue</span>
+
+    tool_use_blocks = [b <span class="kw">for</span> b <span class="kw">in</span> response.content <span class="kw">if</span> b.type == <span class="st">"tool_use"</span>]
+
+<span class="hl">    <span class="cm"># 4. Append the assistant turn VERBATIM (keeps tool_use blocks)</span>
+    messages.<span class="fn">append</span>({<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>: response.content})</span>
+
+    <span class="cm"># 5. Execute EVERY tool the model asked for (parallel-safe)</span>
+    tool_results = []
+    <span class="kw">for</span> tool <span class="kw">in</span> tool_use_blocks:
+        result = <span class="fn">execute_tool</span>(tool.name, tool.input)
+<span class="hl">        tool_results.<span class="fn">append</span>({
+            <span class="st">"type"</span>: <span class="st">"tool_result"</span>,
+            <span class="st">"tool_use_id"</span>: tool.id,     <span class="cm"># 6. must match the tool_use id</span>
+            <span class="st">"content"</span>: result,
+        })</span>
+
+    <span class="cm"># 6. All results go back in ONE user message; 7. loop</span>
+    messages.<span class="fn">append</span>({<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: tool_results})
+
+final_text = <span class="fn">next</span>(b.text <span class="kw">for</span> b <span class="kw">in</span> response.content <span class="kw">if</span> b.type == <span class="st">"text"</span>)`,
+
+ts:`<span class="kw">import</span> Anthropic <span class="kw">from</span> <span class="st">"@anthropic-ai/sdk"</span>;
+
+<span class="kw">const</span> client = <span class="kw">new</span> <span class="fn">Anthropic</span>();
+<span class="kw">const</span> tools: Anthropic.Tool[] = [...];
+<span class="cm">// 1. First message is always role "user"</span>
+<span class="kw">let</span> messages: Anthropic.MessageParam[] = [{ role: <span class="st">"user"</span>, content: userInput }];
+
+<span class="kw">while</span> (<span class="nm">true</span>) {
+<span class="hl">  <span class="cm">// 2. Call the model with the tools</span>
+  <span class="kw">const</span> response = <span class="kw">await</span> client.messages.<span class="fn">create</span>({
+    model: <span class="st">"claude-opus-4-8"</span>,
+    max_tokens: <span class="nm">16000</span>,
+    tools,
+    messages,
+  });</span>
+<span class="hl">  <span class="cm">// 3. Exit on stop_reason — not on the text content</span>
+  <span class="kw">if</span> (response.stop_reason === <span class="st">"end_turn"</span>) <span class="kw">break</span>;</span>
+
+  <span class="cm">// pause_turn: server-side tool hit its limit — re-send to resume</span>
+  <span class="kw">if</span> (response.stop_reason === <span class="st">"pause_turn"</span>) {
+    messages.<span class="fn">push</span>({ role: <span class="st">"assistant"</span>, content: response.content });
+    <span class="kw">continue</span>;
+  }
+
+  <span class="kw">const</span> toolUseBlocks = response.content.<span class="fn">filter</span>(
+    (b): b <span class="kw">is</span> Anthropic.ToolUseBlock => b.type === <span class="st">"tool_use"</span>,
+  );
+
+<span class="hl">  <span class="cm">// 4. Append the assistant turn verbatim</span>
+  messages.<span class="fn">push</span>({ role: <span class="st">"assistant"</span>, content: response.content });</span>
+
+  <span class="cm">// 5. Run every requested tool</span>
+  <span class="kw">const</span> toolResults: Anthropic.ToolResultBlockParam[] = [];
+  <span class="kw">for</span> (<span class="kw">const</span> tool <span class="kw">of</span> toolUseBlocks) {
+    <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">executeTool</span>(tool.name, tool.input);
+<span class="hl">    toolResults.<span class="fn">push</span>({
+      type: <span class="st">"tool_result"</span>,
+      tool_use_id: tool.id,        <span class="cm">// 6. matching id</span>
+      content: result,
+    });</span>
+  }
+
+  <span class="cm">// 6. One user message with all results; 7. loop</span>
+  messages.<span class="fn">push</span>({ role: <span class="st">"user"</span>, content: toolResults });
+}`,
+
+go:`response, _ := client.Messages.<span class="fn">New</span>(ctx, anthropic.MessageNewParams{
+    Model:     anthropic.ModelClaudeOpus4_8,
+    MaxTokens: <span class="nm">16000</span>,
+    Messages:  messages,
+    Tools:     tools,
+})
+
+<span class="kw">for</span> {
+    response, err := client.Messages.<span class="fn">New</span>(ctx, anthropic.MessageNewParams{
+        Model:     anthropic.ModelClaudeOpus4_8,
+        MaxTokens: <span class="nm">16000</span>,
+        Messages:  messages,
+        Tools:     tools,
+    })
+    <span class="kw">if</span> err != <span class="nm">nil</span> { log.<span class="fn">Fatal</span>(err) }
+
+<span class="hl">    <span class="cm">// 4. ToParam() converts the response → MessageParam, keeping tool_use blocks</span>
+    messages = <span class="fn">append</span>(messages, response.<span class="fn">ToParam</span>())</span>
+
+    toolResults := []anthropic.ContentBlockParamUnion{}
+    <span class="kw">for</span> _, block := <span class="kw">range</span> response.Content {
+        <span class="kw">switch</span> variant := block.<span class="fn">AsAny</span>().(<span class="kw">type</span>) {
+        <span class="kw">case</span> anthropic.ToolUseBlock:
+            result := <span class="fn">execute</span>(variant)
+<span class="hl">            toolResults = <span class="fn">append</span>(toolResults,
+                anthropic.<span class="fn">NewToolResultBlock</span>(block.ID, result, <span class="nm">false</span>))  <span class="cm">// 6. id + result</span></span>
+        }
+    }
+
+<span class="hl">    <span class="cm">// 3. Exit when Claude stops asking for tools</span>
+    <span class="kw">if</span> response.StopReason != anthropic.StopReasonToolUse {
+        <span class="kw">break</span>
+    }</span>
+
+    <span class="cm">// 5/6. Tool results go in one user message; 7. loop</span>
+    messages = <span class="fn">append</span>(messages, anthropic.<span class="fn">NewUserMessage</span>(toolResults...))
+}`,
+
+curl:`<span class="cm"># First call — Claude responds with a tool_use block + stop_reason: "tool_use"</span>
+curl https://api.anthropic.com/v1/messages \\
+  -H <span class="st">"x-api-key: \$ANTHROPIC_API_KEY"</span> \\
+  -H <span class="st">"anthropic-version: 2023-06-01"</span> \\
+  -d <span class="st">'{
+    "model": "claude-opus-4-8",
+    "max_tokens": 16000,
+    "tools": [{
+      "name": "get_weather",
+      "description": "Get current weather for a location",
+      "input_schema": {
+        "type": "object",
+        "properties": {"location": {"type": "string"}},
+        "required": ["location"]
+      }
+    }],
+    "messages": [{"role": "user", "content": "Weather in Paris?"}]
+  }'</span>
+
+<span class="cm"># Read stop_reason from the JSON with jq (never grep/sed JSON):</span>
+<span class="cm">#   echo "\$response" | jq -r '.stop_reason'   → "tool_use"</span>
+
+<span class="cm"># Second call — echo the assistant turn back, then add tool_result</span>
+<span class="cm"># with the matching tool_use_id. Loop until stop_reason == "end_turn".</span>
+curl https://api.anthropic.com/v1/messages \\
+  -H <span class="st">"x-api-key: \$ANTHROPIC_API_KEY"</span> \\
+  -H <span class="st">"anthropic-version: 2023-06-01"</span> \\
+  -d <span class="st">'{
+    "model": "claude-opus-4-8",
+    "max_tokens": 16000,
+    "tools": [ ... same tools ... ],
+    "messages": [
+      {"role": "user", "content": "Weather in Paris?"},
+      {"role": "assistant", "content": [
+        {"type": "tool_use", "id": "toolu_abc123",
+         "name": "get_weather", "input": {"location": "Paris"}}
+      ]},
+      {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "toolu_abc123",
+         "content": "72°F and sunny"}
+      ]}
+    ]
+  }'</span>`,
+};
+
+const codeblock = document.getElementById("codeblock");
+function setLang(lang){
+  codeblock.innerHTML = `<code>${CODE[lang]}</code>`;
+  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active",b.dataset.lang===lang));
+}
+document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>setLang(b.dataset.lang));
+setLang("py");
+
+/* ============ INTERACTIVE TRACE ============ */
+const msgsEl=document.getElementById("msgs"), srEl=document.getElementById("srbox"),
+      narrEl=document.getElementById("narrate"), stepLabel=document.getElementById("stepLabel"),
+      stepBtn=document.getElementById("stepBtn");
+
+const TRACE=[
+  {label:"Iteration 1 — seed history",
+   msgs:[{r:"user",c:'"What\'s the weather in Paris and Tokyo?"'}],
+   sr:null, narrate:"messages[] seeded with the first user turn."},
+  {label:"Iteration 1 — model responds",
+   msgs:[{r:"user",c:'"What\'s the weather in Paris and Tokyo?"'},
+         {r:"assistant",c:'2 × tool_use → get_weather(Paris), get_weather(Tokyo)'}],
+   sr:"tool_use", narrate:"stop_reason = tool_use → don't break. Append the assistant turn, run both tools."},
+  {label:"Iteration 1 — tool results returned",
+   msgs:[{r:"user",c:'"What\'s the weather in Paris and Tokyo?"'},
+         {r:"assistant",c:'2 × tool_use → get_weather(Paris), get_weather(Tokyo)'},
+         {r:"toolres",c:'2 × tool_result (matching tool_use_ids): "18°C", "24°C"'}],
+   sr:"tool_use", narrate:"Both results in ONE user message, each with its tool_use_id. Loop again."},
+  {label:"Iteration 2 — model finishes",
+   msgs:[{r:"user",c:'"What\'s the weather in Paris and Tokyo?"'},
+         {r:"assistant",c:'2 × tool_use → get_weather(Paris), get_weather(Tokyo)'},
+         {r:"toolres",c:'2 × tool_result: "18°C", "24°C"'},
+         {r:"assistant",c:'text → "Paris is 18°C, Tokyo is 24°C."'}],
+   sr:"end_turn", narrate:"stop_reason = end_turn → break the loop. Read the final text. Done."},
+];
+let ti=0;
+function renderTrace(){
+  const s=TRACE[ti-1];
+  if(ti===0){
+    msgsEl.innerHTML=`<div style="color:var(--dim);font-size:13px">Press <b>Step ▶</b> to begin.</div>`;
+    srEl.innerHTML=""; narrEl.textContent=""; stepLabel.textContent="Iteration 0 — not started";
+    stepBtn.disabled=false; stepBtn.textContent="Step ▶"; return;
+  }
+  msgsEl.innerHTML=s.msgs.map(m=>{
+    const cls=m.r==="toolres"?"toolres":m.r;
+    const role=m.r==="toolres"?"user · tool_result":m.r;
+    return `<div class="msg ${cls}"><span class="role">${role}</span><span class="body">${m.c}</span></div>`;
+  }).join("");
+  srEl.innerHTML = s.sr
+    ? `<div class="sr ${s.sr}"><span class="lbl">stop_reason =</span> "${s.sr}" ${s.sr==="end_turn"?"✓ break":"↻ loop"}</div>`
+    : `<div style="color:var(--dim);font-size:13px;font-family:var(--mono)">— no response yet —</div>`;
+  narrEl.textContent=s.narrate;
+  stepLabel.textContent=s.label;
+  stepBtn.disabled = ti>=TRACE.length;
+  stepBtn.textContent = ti>=TRACE.length ? "Loop complete ✓" : "Step ▶";
+}
+stepBtn.onclick=()=>{ if(ti<TRACE.length){ti++;renderTrace();} };
+document.getElementById("resetTrace").onclick=()=>{ti=0;renderTrace();};
+renderTrace();
+</script>
+</body>
+</html>

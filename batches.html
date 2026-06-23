@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Message Batches API &amp; batch-vs-sync · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D4 · Prompting &amp; Structured Output · 20%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">Domain 4 · Prompting &amp; Structured Output</div>
+    <h1>Message Batches API: half-price, async, one-shot</h1>
+    <p>The Message Batches API runs ordinary Messages requests <em>asynchronously</em> for <b>50% of the token cost</b>. The exam tests two things: the hard facts (cheaper, completes in ~1h up to a 24h cap, <b>no latency SLA</b>, <b>no multi-turn tool calling</b>, <code>custom_id</code> to correlate results) and the judgement call — <b>when to reach for a batch vs a blocking synchronous call</b>. Batches are for latency-tolerant bulk work; they are the wrong tool for anything you need answered <em>now</em> or anything that loops through tools across turns.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">ℹ️ Verified against the Claude API reference</div>
+    <p><code>client.messages.batches.create(requests=[…])</code> on <code>POST /v1/messages/batches</code>; up to 100,000 requests or 256 MB per batch, results retained 29 days. Default model <code>claude-opus-4-8</code>, <code>max_tokens</code> 16000.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>The hard facts the exam tests</h2>
+    <p class="lead">Memorize these five. Every batch question keys off at least one of them.</p>
+    <ul class="clean">
+      <li><b>50% cheaper</b> — half the standard token price on <em>all</em> token usage (input, output, cached). This is the whole reason to batch.</li>
+      <li><b>Completes within ~1 hour, 24h max</b> — most finish well under an hour, but the only guarantee is the 24-hour ceiling.</li>
+      <li><b>No latency SLA</b> — you do <em>not</em> control or get a promise on when it finishes inside that window. Never put a batch on a path where someone is waiting.</li>
+      <li><b>No multi-turn tool calling</b> — each request is <em>one-shot</em>. The batch sends the request and returns one result; it does not run an agentic loop that executes tools and feeds results back. Vision, prompt caching, and a single structured/tool response are fine — an iterative tool loop is not.</li>
+      <li><b><code>custom_id</code> correlates results</b> — results come back unordered, so you stamp each request with a <code>custom_id</code> and match it on the way out. Reuse a value and you can't tell the results apart.</li>
+    </ul>
+    <div class="callout key">
+      <div class="h">🎯 The one line to remember</div>
+      <p>Batch = <b>latency-tolerant, bulk, 50% off, one-shot, ≤24h, no SLA</b>, results keyed by <code>custom_id</code>. If the workload needs an answer <em>now</em> or runs <b>tools across multiple turns</b>, it is <b>not</b> a batch.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>Creating a batch</h2>
+    <p class="lead">Each entry is a <code>custom_id</code> plus the exact params you'd pass to <code>messages.create</code>. The <code>custom_id</code> is yours — make it meaningful (e.g. <code>"ticket-1"</code>) so you can route the result later.</p>
+    <div class="tabs" id="tabs">
+      <button data-lang="py" class="active">Python</button>
+      <button data-lang="ts">TypeScript</button>
+    </div>
+    <div class="codewrap"><pre id="codeblock"></pre></div>
+    <div class="callout tip">
+      <div class="h">✅ It accepts the full Messages surface</div>
+      <p>Anything a normal <code>messages.create</code> call takes goes inside <code>params</code> — system prompts, vision, <code>cache_control</code>, a structured-output schema, a single tool definition. What you <em>don't</em> get is the back-and-forth: the batch will not execute a tool and re-prompt with the result. It's one request in, one result out.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>Polling &amp; retrieving results</h2>
+    <p class="lead">Poll <code>retrieve</code> until <code>processing_status == "ended"</code>, then stream <code>results()</code> and switch on <code>result.result.type</code>. Use the <code>custom_id</code> to put each result back where it belongs.</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># 2. Poll until the batch has ended (no latency SLA — could be minutes or hours)</span>
+<span class="kw">import</span> time
+<span class="kw">while</span> <span class="kw">True</span>:
+    batch = client.messages.batches.<span class="fn">retrieve</span>(message_batch.id)
+    <span class="kw">if</span> <span class="hl">batch.processing_status == <span class="st">"ended"</span></span>:
+        <span class="kw">break</span>
+    time.<span class="fn">sleep</span>(<span class="nm">60</span>)
+
+<span class="cm"># 3. Stream results — they come back UNORDERED, so correlate by custom_id</span>
+<span class="kw">for</span> result <span class="kw">in</span> client.messages.batches.<span class="fn">results</span>(batch.id):
+    <span class="kw">match</span> <span class="hl">result.result.type</span>:
+        <span class="kw">case</span> <span class="st">"succeeded"</span>:
+            msg = result.result.message
+            text = <span class="kw">next</span>(b.text <span class="kw">for</span> b <span class="kw">in</span> msg.content <span class="kw">if</span> b.type == <span class="st">"text"</span>)
+            <span class="fn">print</span>(<span class="hl">result.custom_id</span>, text)   <span class="cm"># custom_id maps result → original request</span>
+        <span class="kw">case</span> <span class="st">"errored"</span>:
+            <span class="kw">if</span> result.result.error.type == <span class="st">"invalid_request"</span>:
+                <span class="fn">print</span>(result.custom_id, <span class="st">"fix the request &amp; retry"</span>)   <span class="cm"># your bug</span>
+            <span class="kw">else</span>:
+                <span class="fn">print</span>(result.custom_id, <span class="st">"server error — safe to retry"</span>)
+        <span class="kw">case</span> <span class="st">"expired"</span>:
+            <span class="fn">print</span>(result.custom_id, <span class="st">"expired — resubmit"</span>)   <span class="cm"># hit the 24h cap</span>
+        <span class="kw">case</span> <span class="st">"canceled"</span>:
+            <span class="fn">print</span>(result.custom_id, <span class="st">"canceled"</span>)</code></pre></div>
+    <table>
+      <thead><tr><th>Result type</th><th>Meaning</th><th>What to do</th></tr></thead>
+      <tbody>
+        <tr class="row-stop"><td><code>succeeded</code></td><td>Request completed normally</td><td>Read <code>result.message</code></td></tr>
+        <tr class="row-bad"><td><code>errored</code> · <code>invalid_request</code></td><td>Your request was malformed</td><td><b>Fix &amp; retry</b> — retrying as-is repeats the failure</td></tr>
+        <tr class="row-pause"><td><code>errored</code> · server error</td><td>Transient API-side failure</td><td><b>Safe to retry</b> unchanged</td></tr>
+        <tr class="row-loop"><td><code>canceled</code></td><td>Batch was canceled before this ran</td><td>Resubmit if still needed</td></tr>
+        <tr class="row-bad"><td><code>expired</code></td><td>Didn't finish inside the 24h window</td><td>Resubmit</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>Batch or sync? The decision the exam loves</h2>
+    <p class="lead">The split is about <b>who's waiting</b>. If a person or a pipeline is blocked on the answer, go synchronous. If the work can finish whenever, batch it and pocket the 50%. And anything that needs a <b>multi-turn tool loop</b> can't be a batch at all — the batch is one-shot.</p>
+    <div class="grid2">
+      <div class="compare good">
+        <h4>✓ Use BATCH (latency-tolerant, bulk)</h4>
+        <p>Classify 50k tickets overnight · weekly report generation · backfilling embeddings/labels over a large corpus · anything cost-sensitive where "done within the day" is fine. You're trading latency for half-price.</p>
+      </div>
+      <div class="compare bad">
+        <h4>✗ Use SYNC (someone is waiting / needs tools)</h4>
+        <p>A pre-merge CI check that gates the build · a live chat reply · an agent that calls tools across multiple turns (batch has no multi-turn tool use) · anything with a deadline inside the response. Use <code>messages.create</code>.</p>
+      </div>
+    </div>
+
+    <div class="demo">
+      <h4>Decide: batch or sync?</h4>
+      <p class="lead" style="margin-top:0">Pick a scenario — see the right call and why.</p>
+      <div class="btnrow" id="scenario-chips">
+        <button class="chip active" data-s="tickets">Classify 50k tickets overnight, cost matters</button>
+        <button class="chip" data-s="ci">Pre-merge CI check that blocks the build</button>
+        <button class="chip" data-s="agent">Agent that calls tools across multiple turns</button>
+        <button class="chip" data-s="report">Weekly report generation</button>
+      </div>
+      <div class="out" id="decide-out">Pick a scenario above.</div>
+      <div class="narrate" id="cost-line"></div>
+    </div>
+
+    <div class="callout warn">
+      <div class="h">⚠️ The classic distractor</div>
+      <p>There is <b>no <code>--batch</code> CLI flag</b>. Batching is the <em>Message Batches API</em> (an endpoint you call), not a switch on Claude Code or the CLI. If an answer offers "run it with <code>--batch</code>", it's wrong.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>How this shows up on the exam</h2>
+    <div class="callout key">
+      <div class="h">🎯 Scenario → answer</div>
+      <p><b>Scenario:</b> "You need to classify 50,000 support tickets every night, and cost is a concern. Which API do you use?" <b>Answer:</b> the <b>Message Batches API</b> — it's latency-tolerant overnight work and runs at <b>50% of the token cost</b>. Correlate the results with <code>custom_id</code>. (Trap variants: a blocking pre-merge CI check → <b>sync</b>; a multi-turn tool-using agent → <b>sync</b>, because batch is one-shot.)</p>
+    </div>
+    <ul class="clean">
+      <li><b>Batch = latency-tolerant + bulk + 50% off</b> — overnight/weekly classification, backfills, anything where "finishes within the day" is acceptable.</li>
+      <li><b>No latency SLA; ~1h typical, 24h cap</b> — never put a batch where someone is blocked on the result.</li>
+      <li><b>No multi-turn tool calling</b> — each request is one-shot; an agentic tool loop must run synchronously.</li>
+      <li><b><code>custom_id</code> correlates results</b> — results return unordered; the id maps each one back to its request.</li>
+      <li><b>Sync = blocking / answer-now</b> — pre-merge CI gate, live replies, deadlines inside the response.</li>
+      <li><b>No <code>--batch</code> CLI flag</b> — batching is this API, not a Claude Code switch.</li>
+      <li><b>Result types:</b> <code>succeeded</code> / <code>errored</code> (<code>invalid_request</code> = fix &amp; retry; server error = safe to retry) / <code>canceled</code> / <code>expired</code>.</li>
+    </ul>
+    <div class="btnrow">
+      <a class="pill" href="index.html#d4">← Domain 4 overview</a>
+      <a class="pill" href="index.html#flash">Flashcards</a>
+      <a class="pill" href="index.html#quiz">Practice quiz</a>
+    </div>
+  </div>
+
+  <div class="footer">CCA Foundations study guide · Domain 4 · Prompting &amp; Structured Output · Verified against the Claude API reference · default model claude-opus-4-8</div>
+</div>
+
+<script>
+  // ----- language tabs (card 2: create a batch) -----
+  var CODE = {
+    py: '<span class="cm"># 1. Create a batch — each request carries a custom_id you choose</span>\n' +
+        '<span class="kw">import</span> anthropic\n' +
+        '<span class="kw">from</span> anthropic.types.message_create_params <span class="kw">import</span> MessageCreateParamsNonStreaming\n' +
+        '<span class="kw">from</span> anthropic.types.messages.batch_create_params <span class="kw">import</span> Request\n\n' +
+        'client = anthropic.<span class="fn">Anthropic</span>()\n\n' +
+        'message_batch = client.messages.batches.<span class="fn">create</span>(\n' +
+        '    requests=[\n' +
+        '        <span class="fn">Request</span>(\n' +
+        '            <span class="hl">custom_id=<span class="st">"ticket-1"</span></span>,   <span class="cm"># correlate the result later</span>\n' +
+        '            params=<span class="fn">MessageCreateParamsNonStreaming</span>(\n' +
+        '                model=<span class="st">"claude-opus-4-8"</span>,\n' +
+        '                max_tokens=<span class="nm">16000</span>,\n' +
+        '                messages=[{<span class="st">"role"</span>: <span class="st">"user"</span>,\n' +
+        '                           <span class="st">"content"</span>: <span class="st">"Classify this ticket: …"</span>}],\n' +
+        '            ),\n' +
+        '        ),\n' +
+        '        <span class="cm"># … up to 100,000 requests or 256 MB per batch</span>\n' +
+        '    ]\n' +
+        ')\n' +
+        '<span class="cm"># 50% cheaper · no latency SLA · one-shot (no multi-turn tool loop)</span>\n' +
+        '<span class="fn">print</span>(message_batch.id, message_batch.processing_status)',
+    ts: '<span class="cm">// 1. Create a batch — each request carries a custom_id you choose</span>\n' +
+        '<span class="kw">import</span> Anthropic <span class="kw">from</span> <span class="st">"@anthropic-ai/sdk"</span>;\n\n' +
+        '<span class="kw">const</span> client = <span class="kw">new</span> <span class="fn">Anthropic</span>();\n\n' +
+        '<span class="kw">const</span> messageBatch = <span class="kw">await</span> client.messages.batches.<span class="fn">create</span>({\n' +
+        '  requests: [\n' +
+        '    {\n' +
+        '      <span class="hl">custom_id: <span class="st">"ticket-1"</span></span>,   <span class="cm">// correlate the result later</span>\n' +
+        '      params: {\n' +
+        '        model: <span class="st">"claude-opus-4-8"</span>,\n' +
+        '        max_tokens: <span class="nm">16000</span>,\n' +
+        '        messages: [{ role: <span class="st">"user"</span>,\n' +
+        '                     content: <span class="st">"Classify this ticket: …"</span> }],\n' +
+        '      },\n' +
+        '    },\n' +
+        '    <span class="cm">// … up to 100,000 requests or 256 MB per batch</span>\n' +
+        '  ],\n' +
+        '});\n' +
+        '<span class="cm">// 50% cheaper · no latency SLA · one-shot (no multi-turn tool loop)</span>\n' +
+        'console.<span class="fn">log</span>(messageBatch.id, messageBatch.processing_status);'
+  };
+  var cb = document.getElementById('codeblock');
+  function setLang(l) {
+    cb.innerHTML = '<code>' + CODE[l] + '</code>';
+    document.querySelectorAll('#tabs button').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.lang === l);
+    });
+  }
+  document.querySelectorAll('#tabs button').forEach(function (b) {
+    b.onclick = function () { setLang(b.dataset.lang); };
+  });
+  setLang('py');
+
+  // ----- batch-or-sync decider -----
+  var SCENARIOS = {
+    tickets: {
+      verdict: 'batch',
+      text: '✓ BATCH — 50,000 classifications with no one waiting and cost as the driver is exactly what batches are for. Latency-tolerant + bulk + 50% off.',
+      cost: 'Batch ≈ 50% of sync token cost.'
+    },
+    ci: {
+      verdict: 'sync',
+      text: '✗ SYNC — a pre-merge CI check gates the build; a developer (and the pipeline) is blocked on the answer. Batches have no latency SLA, so use messages.create.',
+      cost: 'A blocking gate can’t wait an unknown amount of time — sync only.'
+    },
+    agent: {
+      verdict: 'sync',
+      text: '✗ SYNC — calling tools across multiple turns needs an agentic loop. The Batches API is one-shot: it has NO multi-turn tool calling, so this can’t be a batch at all.',
+      cost: 'Batch is one request in, one result out — no tool loop.'
+    },
+    report: {
+      verdict: 'batch',
+      text: '✓ BATCH — scheduled weekly report generation is latency-tolerant; it can finish anytime within the window. Batch it for the 50% discount.',
+      cost: 'Batch ≈ 50% of sync token cost.'
+    }
+  };
+  var decideOut = document.getElementById('decide-out');
+  var costLine = document.getElementById('cost-line');
+  function decide(key) {
+    var s = SCENARIOS[key];
+    document.querySelectorAll('#scenario-chips .chip').forEach(function (c) {
+      c.classList.toggle('active', c.dataset.s === key);
+    });
+    decideOut.className = 'out ' + (s.verdict === 'batch' ? 'good' : 'bad');
+    decideOut.textContent = s.text;
+    costLine.textContent = s.cost;
+  }
+  document.querySelectorAll('#scenario-chips .chip').forEach(function (c) {
+    c.onclick = function () { decide(c.dataset.s); };
+  });
+  decide('tickets');
+</script>
+</body>
+</html>

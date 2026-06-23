@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Context management — keeping facts intact over long runs · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D5 · Context &amp; Reliability · 15%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">Domain 5 · Context &amp; Reliability</div>
+    <h1>Context management: keeping hard facts intact over long runs</h1>
+    <p>Long sessions don't fail because they run out of room — they fail because the model stops <em>attending</em> to the middle of a giant context, and because lossy summaries quietly drop the numbers, dates, IDs, and statuses that matter. The fixes are structural: put key info at the <b>start and end</b>, pin specifics in a durable <b>case-facts block</b> kept outside the summarized history, and <b>trim verbose tool outputs</b> before they pile up. A bigger window does not fix attention dilution.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">ℹ️ Verified against the Claude API reference</div>
+    <p>Server-side <b>compaction</b> (beta <code>compact-2026-01-12</code>) auto-summarizes earlier context near the limit; you must append the FULL <code>response.content</code> (the compaction block) back to <code>messages</code>. <b>Context editing</b> prunes stale tool results/thinking instead of summarizing. Memory (a <code>/memories</code> directory) persists across sessions. Default model <code>claude-opus-4-8</code>.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>Lost-in-the-middle: the model attends best to the edges</h2>
+    <p class="lead">Across a long context, attention is strongest at the <b>start</b> and the <b>end</b>; content buried in the middle gets the least attention and is the most likely to be ignored or misremembered. This is the single most-tested context fact.</p>
+    <ul class="clean">
+      <li><b>Put key findings and instructions at the START and END</b> — the two positions the model reads most reliably.</li>
+      <li><b>Anchor the middle with clear section HEADERS</b> so the model can navigate it instead of drowning in undifferentiated text.</li>
+      <li><b>A bigger context window does NOT fix this.</b> More room just means more middle to ignore — length alone doesn't restore attention.</li>
+    </ul>
+    <div class="callout key">
+      <div class="h">🎯 The one fact to memorize</div>
+      <p>Attention favors the <b>edges</b>. Key info goes at the <b>start and end</b>; headers anchor the middle. The fix is <b>placement + structure</b> — not a larger window.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>The "case facts" block — don't summarize away hard facts</h2>
+    <p class="lead">When you condense a long history, summaries paraphrase. Paraphrase drops <b>numbers, dates, IDs, and statuses</b> — exactly the specifics a support or ops session hinges on. Don't trust the model to re-derive them. Extract them into a persistent <b>case-facts block</b> kept OUTSIDE the summarized history and re-injected verbatim every turn.</p>
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>✗ Summarize and hope</h4>
+        <p>"Customer contacted us about a refund." The order ID, the $ amount, the status, and the dates are gone — the model now guesses, re-asks, or invents them.</p>
+      </div>
+      <div class="compare good">
+        <h4>✓ Pin specifics in a durable facts block</h4>
+        <p>Order <code>ORD-88421</code>, $149.00, status <code>refund_pending</code>, opened 2026-06-12. Kept verbatim, re-injected each turn, never sent through the summarizer.</p>
+      </div>
+    </div>
+    <div class="codewrap solo"><pre><code><span class="cm"># A persistent "case facts" block — the specifics summaries would drop.</span>
+<span class="cm"># Kept OUTSIDE the summarized history and re-injected verbatim each turn.</span>
+<span class="hl">case_facts = {</span>
+<span class="hl">    <span class="st">"customer_id"</span>: <span class="st">"CUST-3391"</span>,</span>
+<span class="hl">    <span class="st">"order_id"</span>:    <span class="st">"ORD-88421"</span>,</span>
+<span class="hl">    <span class="st">"amount"</span>:      <span class="st">"$149.00"</span>,</span>
+<span class="hl">    <span class="st">"status"</span>:      <span class="st">"refund_pending"</span>,</span>
+<span class="hl">    <span class="st">"opened"</span>:      <span class="st">"2026-06-12"</span>,</span>
+<span class="hl">    <span class="st">"sla_due"</span>:     <span class="st">"2026-06-19"</span>,</span>
+<span class="hl">}</span>
+
+<span class="kw">def</span> <span class="fn">facts_block</span>(facts):
+    <span class="cm"># Render the pinned facts as a labeled, verbatim block.</span>
+    lines = [<span class="st">f"- {k}: {v}"</span> <span class="kw">for</span> k, v <span class="kw">in</span> facts.items()]
+    <span class="kw">return</span> <span class="st">"=== CASE FACTS (authoritative — do not paraphrase) ===\n"</span> + <span class="st">"\n"</span>.join(lines)
+
+<span class="kw">def</span> <span class="fn">build_messages</span>(summary, latest_turn, facts):
+    <span class="kw">return</span> [
+        {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="st">"Conversation so far (summarized):\n"</span> + summary},
+        {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: latest_turn},
+        <span class="cm"># Re-inject the facts at the END — high-attention position, every turn.</span>
+<span class="hl">        {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="fn">facts_block</span>(facts)},</span>
+    ]
+    <span class="cm"># The summary may drop ORD-88421 / $149.00 / dates — the facts block won't.</span></code></pre></div>
+    <div class="callout warn">
+      <div class="h">⚠️ The exam scenario</div>
+      <p>"A long support session is being summarized to save context. What protects the order ID, amount, and status?" → <b>Pin the specifics in a durable case-facts block kept outside the summary and re-injected verbatim.</b> Do NOT rely on the model to re-derive them from a paraphrase.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>Trim verbose tool outputs before they accumulate</h2>
+    <p class="lead">Tool calls dump JSON. If you append the full payload every time, context bloats with fields the model never needs — and the useful signal gets diluted. Trim each tool result to the relevant fields <b>before</b> it lands in context.</p>
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>✗ Dump the full 30-field payload</h4>
+        <p>Every call adds dozens of fields — timestamps, internal flags, nested metadata. Context fills with noise; the few fields that matter drown in the middle.</p>
+      </div>
+      <div class="compare good">
+        <h4>✓ Keep the 3 fields you actually use</h4>
+        <p>Project the response down to what the next step needs. Smaller, denser, and the signal stays attended-to.</p>
+      </div>
+    </div>
+    <div class="codewrap solo"><pre><code><span class="cm"># BEFORE — the raw tool output you'd be tempted to append wholesale (30+ fields)</span>
+raw = {
+    <span class="st">"id"</span>: <span class="st">"ORD-88421"</span>, <span class="st">"status"</span>: <span class="st">"refund_pending"</span>, <span class="st">"total"</span>: <span class="st">"$149.00"</span>,
+    <span class="st">"created_at"</span>: <span class="st">"2026-06-12T08:14:02Z"</span>, <span class="st">"updated_at"</span>: <span class="st">"2026-06-18T11:03:55Z"</span>,
+    <span class="st">"currency"</span>: <span class="st">"USD"</span>, <span class="st">"channel"</span>: <span class="st">"web"</span>, <span class="st">"warehouse"</span>: <span class="st">"WH-07"</span>,
+    <span class="st">"carrier"</span>: <span class="st">"UPS"</span>, <span class="st">"tracking"</span>: <span class="st">"1Z..."</span>, <span class="st">"gift"</span>: <span class="nm">False</span>, <span class="st">"tax_region"</span>: <span class="st">"TX"</span>,
+    <span class="st">"line_items"</span>: [<span class="cm">/* ...nested... */</span>], <span class="st">"audit_log"</span>: [<span class="cm">/* ...20 events... */</span>],
+    <span class="cm"># ...18 more fields the model will never use this turn...</span>
+}
+
+<span class="cm"># AFTER — keep only what the next step needs, then append THIS to context</span>
+<span class="hl">trimmed = {<span class="st">"order_id"</span>: raw[<span class="st">"id"</span>], <span class="st">"status"</span>: raw[<span class="st">"status"</span>], <span class="st">"total"</span>: raw[<span class="st">"total"</span>]}</span>
+<span class="cm"># 3 fields instead of 30 — same answer, a fraction of the tokens, no dilution.</span></code></pre></div>
+    <div class="callout tip">
+      <div class="h">✅ Trim at the boundary</div>
+      <p>Project the tool result down <em>where you receive it</em>, before it ever enters <code>messages</code>. Once a full payload is in the transcript, it costs tokens and attention on every later turn.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>API mechanisms: compaction, context editing, memory</h2>
+    <p class="lead">Three server- or storage-level tools sit underneath the manual techniques above. Know what each does — and the one critical handling rule for compaction.</p>
+    <table>
+      <thead><tr><th>Mechanism</th><th>What it does</th><th>When</th></tr></thead>
+      <tbody>
+        <tr><td><b>Compaction</b> <code>compact-2026-01-12</code></td><td>Auto-<b>summarizes</b> earlier context server-side near the limit, returning a compaction block.</td><td>Long conversations nearing the context window.</td></tr>
+        <tr><td><b>Context editing</b></td><td><b>Prunes</b> stale tool results / thinking blocks — removes, doesn't summarize.</td><td>Old tool output no longer relevant; keep the transcript lean.</td></tr>
+        <tr><td><b>Memory</b></td><td>Read/write a <code>/memories</code> directory that <b>persists across sessions</b>.</td><td>State must survive beyond one conversation.</td></tr>
+      </tbody>
+    </table>
+    <h3>Compaction — append the FULL response.content</h3>
+    <p>The compaction block in the response is the <em>state</em> the API uses to replace the compacted history next turn. If you append only the text, you lose it — silently.</p>
+    <div class="codewrap solo"><pre><code><span class="kw">import</span> anthropic
+client = anthropic.<span class="fn">Anthropic</span>()
+messages = []
+
+<span class="kw">def</span> <span class="fn">chat</span>(user_message):
+    messages.append({<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: user_message})
+
+    response = client.beta.messages.<span class="fn">create</span>(
+        betas=[<span class="st">"compact-2026-01-12"</span>],
+        model=<span class="st">"claude-opus-4-8"</span>,
+        max_tokens=<span class="nm">16000</span>,
+        messages=messages,
+        context_management={<span class="st">"edits"</span>: [{<span class="st">"type"</span>: <span class="st">"compact_20260112"</span>}]},
+    )
+
+    <span class="cm"># CRITICAL: append the FULL response.content — preserve the compaction block.</span>
+    <span class="cm"># Appending only the .text string silently drops the compaction state.</span>
+<span class="hl">    messages.append({<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>: response.content})</span>
+
+    <span class="kw">return</span> <span class="fn">next</span>(b.text <span class="kw">for</span> b <span class="kw">in</span> response.content <span class="kw">if</span> b.type == <span class="st">"text"</span>)</code></pre></div>
+    <div class="callout warn">
+      <div class="h">⚠️ Compaction is not a free fix for attention</div>
+      <p>Compaction summarizes to fit the <em>window</em> — it does not restore attention to the middle, and it can drop hard facts just like any summary. Keep pinning specifics in a case-facts block <em>outside</em> what gets compacted.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>Try it: lost-in-the-middle &amp; pinning</h2>
+    <p class="lead">A long stack of context blocks. The <b>start</b> and <b>end</b> glow (high attention); the middle is dim (low attention). One key fact is buried in the middle. Toggle <b>Summarize history</b> to watch the summary drop the number — then <b>Pin to case-facts</b> to lift it into a high-attention block that keeps it verbatim.</p>
+    <div class="demo">
+      <h4>Attention map · summarize vs. pin</h4>
+      <div class="btnrow">
+        <span class="chip active" id="m-raw" data-mode="raw">Raw history</span>
+        <span class="chip" id="m-sum" data-mode="sum">Summarize history</span>
+        <span class="chip" id="m-pin" data-mode="pin">Pin to case-facts</span>
+      </div>
+      <div id="facts" class="out" style="display:none"></div>
+      <div id="stack" style="margin-top:10px"></div>
+      <div class="narrate" id="cap">Start and end blocks glow — the model attends to them. The buried order ID sits in the dim middle.</div>
+    </div>
+    <div class="callout key">
+      <div class="h">🎯 What the demo proves</div>
+      <p><b>Summarizing</b> condenses the middle but <b>drops the hard fact</b> (order ID gone). <b>Pinning</b> moves that fact into a high-attention case-facts block kept outside the summary, so it survives verbatim. A bigger window would just add more dim middle.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">6</span>How this shows up on the exam</h2>
+    <div class="callout key">
+      <div class="h">🎯 Scenario → answer</div>
+      <p><b>Scenario:</b> "A long support session is being summarized to stay within context. The agent keeps losing the order ID and refund amount. How do you keep the specifics intact?"</p>
+      <p style="margin-top:8px"><b>Answer:</b> <b>Pin the numbers, dates, IDs, and statuses in a durable case-facts block kept OUTSIDE the summarized history and re-injected verbatim each turn.</b> Don't trust the model to re-derive them from a paraphrase, and don't reach for a bigger window — length doesn't fix attention dilution.</p>
+    </div>
+    <ul class="clean">
+      <li><b>Lost-in-the-middle:</b> put key findings/instructions at the <b>START and END</b>; anchor the middle with clear section <b>headers</b>.</li>
+      <li><b>Pin hard facts</b> (numbers, dates, IDs, statuses) in a <b>case-facts block outside summaries</b>, re-injected verbatim — summaries drop them.</li>
+      <li><b>Trim verbose tool outputs</b> to the relevant fields <em>before</em> they accumulate; don't dump full API JSON.</li>
+      <li><b>A bigger context window ≠ better attention</b> — it's a distractor; splitting passes / pinning / trimming is the fix. Length alone is also not an escalation trigger.</li>
+      <li><b>On compaction, append the FULL <code>response.content</code></b> (the compaction block), not just the text, or you lose the compaction state.</li>
+      <li>Know the trio: <b>compaction</b> summarizes near the limit · <b>context editing</b> prunes stale tool results/thinking · <b>memory</b> (<code>/memories</code>) persists across sessions.</li>
+    </ul>
+    <div style="margin-top:14px">
+      <a class="pill" href="index.html#d5">Domain 5: Context &amp; Reliability</a>
+      <a class="pill" href="index.html#flash">Flashcards</a>
+      <a class="pill" href="index.html#quiz">Practice quiz</a>
+    </div>
+  </div>
+
+  <div class="footer">CCA Foundations study guide · Edges get attention · pin the hard facts · trim before it piles up.</div>
+</div>
+
+<script>
+  (function () {
+    var mode = "raw";
+    var stack = document.getElementById("stack");
+    var facts = document.getElementById("facts");
+    var cap = document.getElementById("cap");
+    var chips = {
+      raw: document.getElementById("m-raw"),
+      sum: document.getElementById("m-sum"),
+      pin: document.getElementById("m-pin")
+    };
+
+    // The full raw history. The buried fact lives in the middle.
+    var blocks = [
+      { text: "Customer opened a support chat about a return.", zone: "start" },
+      { text: "Agent greeted and asked for the order reference.", zone: "mid" },
+      { text: "Order ORD-88421 · $149.00 · status refund_pending", zone: "mid", key: true },
+      { text: "Discussed shipping timelines and warehouse WH-07.", zone: "mid" },
+      { text: "Customer asked about the refund SLA window.", zone: "mid" },
+      { text: "Latest: customer wants an ETA on the refund.", zone: "end" }
+    ];
+
+    function render() {
+      stack.innerHTML = "";
+      var list = blocks;
+
+      if (mode === "sum") {
+        // Summarizing collapses the middle into one lossy line that DROPS the key fact.
+        list = [
+          blocks[0],
+          { text: "[summary] Discussed a return, shipping, and the refund SLA. (specifics omitted)", zone: "mid", dropped: true },
+          blocks[blocks.length - 1]
+        ];
+      }
+
+      for (var i = 0; i < list.length; i++) {
+        var b = list[i];
+        var div = document.createElement("div");
+        var glow = (b.zone === "start" || b.zone === "end");
+        div.style.cssText =
+          "border:1px solid #2a323d;border-radius:8px;padding:9px 12px;margin:6px 0;font-size:13px;" +
+          "font-family:ui-monospace,Menlo,Consolas,monospace;transition:.15s;";
+        if (glow) {
+          div.style.borderColor = "#d6753b";
+          div.style.background = "rgba(214,117,59,.16)";
+          div.style.color = "#e89b6c";
+        } else {
+          div.style.opacity = "0.42";
+          div.style.background = "#0b0f14";
+          div.style.color = "#9aa7b5";
+        }
+        var label = glow ? (b.zone === "start" ? "START · high attention" : "END · high attention")
+                         : "middle · low attention";
+        var note = b.dropped ? "  ⚠ key fact dropped by summary"
+                 : (b.key && mode === "pin" ? "  (now pinned below)" : "");
+        div.textContent = "[" + label + "]  " + b.text + note;
+        if (b.key && mode === "pin") { div.style.opacity = "0.28"; }
+        stack.appendChild(div);
+      }
+
+      if (mode === "pin") {
+        facts.style.display = "block";
+        facts.className = "out good";
+        facts.textContent =
+          "=== CASE FACTS (pinned · verbatim · re-injected each turn) ===\n" +
+          "- order_id: ORD-88421\n- amount: $149.00\n- status: refund_pending";
+        facts.style.whiteSpace = "pre";
+      } else {
+        facts.style.display = "none";
+      }
+    }
+
+    function setMode(m) {
+      mode = m;
+      for (var k in chips) {
+        chips[k].className = "chip" + (k === m ? " active" : "");
+      }
+      if (m === "raw") {
+        cap.textContent = "Raw: start and end glow (high attention); the buried order ID sits in the dim middle, easily ignored.";
+      } else if (m === "sum") {
+        cap.textContent = "Summarized: the middle collapses to one line and the hard fact (ORD-88421 / $149.00) is GONE — the model can't re-derive it.";
+      } else {
+        cap.textContent = "Pinned: the specifics move into a high-attention case-facts block kept OUTSIDE the summary, preserved verbatim every turn.";
+      }
+      render();
+    }
+
+    chips.raw.addEventListener("click", function () { setMode("raw"); });
+    chips.sum.addEventListener("click", function () { setMode("sum"); });
+    chips.pin.addEventListener("click", function () { setMode("pin"); });
+
+    setMode("raw");
+  })();
+</script>
+</body>
+</html>

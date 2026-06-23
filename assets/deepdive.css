@@ -1,0 +1,133 @@
+/* ============================================================
+   CCA Foundations — shared deep-dive stylesheet
+   Linked by every deep-dive page. Matches index.html / stop-reason.html.
+   ============================================================ */
+:root{
+  --bg:#0e1116; --panel:#161b22; --panel-2:#1c232d; --border:#2a323d;
+  --txt:#e6edf3; --muted:#9aa7b5; --dim:#6b7785;
+  --accent:#d6753b; --accent-2:#e89b6c; --accent-soft:#3a2417;
+  --good:#3fb950; --good-soft:#12251a; --bad:#f85149; --bad-soft:#2a1416;
+  --blue:#58a6ff; --purple:#bc8cff; --yellow:#e3b341; --green-tok:#7ee787;
+  --radius:12px; --shadow:0 8px 30px rgba(0,0,0,.35);
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--sans);line-height:1.65;font-size:15.5px}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:var(--mono);font-size:.86em;background:var(--panel-2);border:1px solid var(--border);
+  padding:1px 6px;border-radius:6px;color:var(--accent-2)}
+kbd{font-family:var(--mono);font-size:.8em;background:var(--panel-2);border:1px solid var(--border);
+  border-bottom-width:2px;padding:1px 6px;border-radius:5px}
+h1,h2,h3,h4{line-height:1.25;margin:0}
+
+.main{max-width:940px;margin:0 auto;padding:30px 28px 120px}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px;
+  padding-bottom:16px;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap}
+.topbar .back{font-size:14px;color:var(--muted)}
+.topbar .back:hover{color:var(--accent-2)}
+.topbar .badge{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);background:var(--accent-soft);padding:5px 11px;border-radius:99px}
+
+.pagehead{margin-bottom:24px}
+.pagehead .eyebrow{color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.pagehead h1{font-size:30px;margin:8px 0 8px}
+.pagehead p{color:var(--muted);max-width:760px;font-size:15.5px}
+
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px;margin-bottom:20px}
+.card h2{font-size:20px;margin-bottom:6px}
+.card h2 .n{color:var(--accent);margin-right:8px}
+.card h3{font-size:15px;margin:18px 0 8px;color:var(--accent-2)}
+.card p{color:var(--txt)}
+.lead{color:var(--muted)}
+ul.bul{margin:8px 0;padding-left:20px}
+ul.bul li{margin:6px 0}
+
+/* clean bullet list (▸) */
+ul.clean{list-style:none;padding:0;margin:12px 0}
+ul.clean li{padding:9px 0 9px 28px;position:relative;border-bottom:1px solid rgba(42,50,61,.5)}
+ul.clean li:last-child{border-bottom:none}
+ul.clean li::before{content:"▸";position:absolute;left:6px;color:var(--accent);font-size:13px;top:9px}
+
+/* tables */
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+tbody tr:hover{background:var(--panel-2)}
+td code{white-space:nowrap}
+.row-loop td:first-child code{color:var(--yellow)}
+.row-stop td:first-child code{color:var(--good)}
+.row-pause td:first-child code{color:var(--blue)}
+.row-bad td:first-child code{color:var(--bad)}
+
+/* callouts */
+.callout{border-radius:var(--radius);padding:15px 18px;margin:16px 0;border-left:4px solid}
+.callout .h{font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.callout p{margin:4px 0 0}
+.callout.tip{background:var(--good-soft);border-color:var(--good)} .callout.tip .h{color:var(--good)}
+.callout.warn{background:var(--bad-soft);border-color:var(--bad)} .callout.warn .h{color:var(--bad)}
+.callout.key{background:var(--accent-soft);border-color:var(--accent)} .callout.key .h{color:var(--accent-2)}
+.callout.note{background:#10243d33;border-color:var(--blue)} .callout.note .h{color:var(--blue)}
+
+/* language tabs + code */
+.tabs{display:flex;gap:6px;margin-bottom:0;flex-wrap:wrap}
+.tabs button{background:var(--panel);border:1px solid var(--border);border-bottom:none;color:var(--muted);
+  padding:8px 16px;border-radius:9px 9px 0 0;cursor:pointer;font-size:13.5px;font-family:inherit;font-weight:600}
+.tabs button.active{background:#0b0f14;color:var(--accent-2);border-color:var(--accent)}
+.codewrap{background:#0b0f14;border:1px solid var(--accent);border-radius:0 10px 10px 10px;overflow:hidden}
+.codewrap.solo{border-radius:10px}   /* when no tabs */
+pre{margin:0;padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.6}
+pre code{background:none;border:none;padding:0;color:#c9d1d9;font-size:13px;white-space:pre}
+.cm{color:#6b7785;font-style:italic}   /* comment */
+.kw{color:#ff7b72}                       /* keyword   */
+.st{color:#a5d6ff}                       /* string    */
+.fn{color:#d2a8ff}                       /* function  */
+.nm{color:#79c0ff}                       /* number/const */
+.hl{background:rgba(214,117,59,.16);display:block;margin:0 -20px;padding:0 20px;border-left:2px solid var(--accent)}
+
+/* annotated step list (auto-numbered) */
+ol.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0}
+ol.steps li{position:relative;padding:12px 0 12px 46px;border-bottom:1px solid rgba(42,50,61,.5)}
+ol.steps li:last-child{border:none}
+ol.steps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:12px;
+  width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent-2);
+  display:grid;place-items:center;font-weight:800;font-size:14px}
+ol.steps li b{color:var(--txt)}
+ol.steps li span{color:var(--muted)}
+
+/* two-column compare (good vs bad / before vs after) */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:14px 0}
+@media(max-width:760px){.grid2{grid-template-columns:1fr}}
+.compare{border-radius:10px;padding:16px 18px;border:1px solid var(--border);background:#0b0f14}
+.compare h4{font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}
+.compare.good{border-color:var(--good)} .compare.good h4{color:var(--good)}
+.compare.bad{border-color:var(--bad)} .compare.bad h4{color:var(--bad)}
+.compare p{color:var(--muted);font-size:14px;margin:6px 0 0}
+
+/* generic interactive widgets */
+.demo{background:#0b0f14;border:1px solid var(--border);border-radius:10px;padding:18px;margin:14px 0}
+.demo h4{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:0 0 12px}
+.btnrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0}
+.btn{background:var(--panel);border:1px solid var(--border);color:var(--txt);
+  padding:9px 16px;border-radius:9px;cursor:pointer;font-size:14px;font-family:inherit;font-weight:600;transition:.13s}
+.btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent-2)}
+.btn.active{background:var(--accent-soft);color:var(--accent-2);border-color:var(--accent)}
+.btn:disabled{opacity:.4;cursor:default}
+.chip{display:inline-block;background:var(--panel-2);border:1px solid var(--border);color:var(--muted);
+  padding:6px 14px;border-radius:99px;cursor:pointer;font-size:13px;font-family:inherit}
+.chip.active{background:var(--accent-soft);color:var(--accent-2);border-color:var(--accent)}
+.out{font-family:var(--mono);font-size:13px;border-radius:8px;padding:12px 14px;border:1px solid var(--border);
+  background:#0b0f14;margin-top:10px;min-height:22px}
+.out.good{border-color:var(--good);background:var(--good-soft);color:#9be0a8}
+.out.bad{border-color:var(--bad);background:var(--bad-soft);color:#f3a39e}
+.narrate{min-height:24px;color:var(--accent-2);font-size:14px;font-weight:600;margin-top:8px}
+.toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;color:var(--txt)}
+.toggle input{width:18px;height:18px;accent-color:var(--accent)}
+@keyframes pop{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+
+/* pills + footer */
+.pill{display:inline-block;background:var(--panel-2);border:1px solid var(--border);border-radius:99px;
+  padding:2px 10px;font-size:12px;color:var(--muted);margin:2px 3px}
+.footer{color:var(--dim);font-size:12.5px;text-align:center;margin-top:36px;padding-top:18px;border-top:1px solid var(--border)}

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Code in CI — headless &amp; non-interactive workflows · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D3 · Claude Code · 20%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">Claude Code · headless · non-interactive · CI/CD</div>
+    <h1>Claude Code in CI</h1>
+    <p>An interactive <code>claude</code> session waits for a human. A CI job has no human — so the very first
+       thing to get right is making the run <b>non-interactive</b> with <code>-p</code>/<code>--print</code>,
+       or the job hangs forever and never returns. From there the exam tests three more calls:
+       <b>machine-parseable output</b> (<code>--output-format json</code>, optionally constrained with
+       <code>--json-schema</code>), using an <b>independent review instance</b> instead of self-review, and
+       recognising two <b>distractors that don't exist</b> — <code>CLAUDE_HEADLESS</code> and <code>--batch</code>.</p>
+  </div>
+
+  <div class="callout warn">
+    <div class="h">⚠️ Verify flags against current Claude Code docs</div>
+    <p>CLI flags are version-sensitive; docs map
+       <a href="https://docs.anthropic.com/en/docs/claude-code/claude_code_docs_map.md">https://docs.anthropic.com/en/docs/claude-code/claude_code_docs_map.md</a></p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>The hang: interactive mode has no human in CI</h2>
+    <p class="lead">This is the classic exam question — <i>"the CI job starts <code>claude</code> and never
+       returns; what's wrong?"</i> A bare <code>claude "…"</code> launches the <b>interactive REPL</b>, which
+       blocks waiting for terminal input that will never come. The fix is one flag.</p>
+
+    <div class="callout key">
+      <div class="h">🎯 <code>-p</code> / <code>--print</code> is the fix for the hang</div>
+      <p><code>-p</code> (long form <code>--print</code>) runs Claude Code <b>non-interactively</b>: it takes the
+         prompt, does the work, <b>prints the result, and exits</b>. No prompt, no REPL, no waiting. If a CI
+         step using <code>claude</code> "hangs forever / never returns," the answer is almost always
+         <b>"it's missing <code>-p</code>/<code>--print</code>."</b></p>
+    </div>
+
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>Before — no <code>-p</code> → HANGS</h4>
+        <div class="codewrap solo"><pre><code><span class="cm"># CI step (e.g. a GitHub Actions run)</span>
+<span class="hl"><span class="fn">claude</span> <span class="st">"review this"</span></span>
+<span class="cm"># → opens the interactive REPL,</span>
+<span class="cm">#   blocks on stdin waiting for a human.</span>
+<span class="cm"># → the job never returns; it times out.</span></code></pre></div>
+        <p>Interactive mode wants a person at the keyboard. There isn't one in CI.</p>
+      </div>
+      <div class="compare good">
+        <h4>After — add <code>-p</code>/<code>--print</code> → returns &amp; exits</h4>
+        <div class="codewrap solo"><pre><code><span class="cm"># Same step, non-interactive</span>
+<span class="hl"><span class="fn">claude</span> <span class="kw">-p</span> <span class="st">"review this"</span></span>
+<span class="cm"># → does the work, prints the result,</span>
+<span class="cm">#   and exits with a status code.</span>
+<span class="cm"># → the job completes normally.</span></code></pre></div>
+        <p>One flag turns a hanging job into a clean, scriptable command.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>Make the output machine-parseable</h2>
+    <p class="lead">A human can read prose. A CI pipeline can't act on it reliably. Switch the output to JSON so
+       a downstream step can parse the result, gate the build, post a comment, etc.</p>
+
+    <table>
+      <thead><tr><th>Flag</th><th>What it does</th><th>Why CI wants it</th></tr></thead>
+      <tbody>
+        <tr class="row-stop"><td><code>--output-format json</code></td><td>Emits a structured JSON envelope (result, session id, usage/cost metadata) instead of plain text.</td><td>A script can parse it with <code>jq</code> rather than scraping prose.</td></tr>
+        <tr class="row-pause"><td><code>--json-schema &lt;schema&gt;</code></td><td>Constrains the model's findings to a <b>JSON Schema</b> you supply; the conforming output lands in the <code>structured_output</code> field.</td><td>Every run has the <b>same shape</b>, so parsing never breaks.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout key">
+      <div class="h">🎯 <code>--output-format json</code> (+ <code>--json-schema</code>) = reliable parsing</div>
+      <p>Use <code>--output-format json</code> for a machine-readable envelope, and add <code>--json-schema</code>
+         to <b>constrain findings to a schema</b> so CI gets a predictable structure every time. The structured
+         result lands in <code>structured_output</code>; pipe to <code>jq</code> to extract fields.</p>
+    </div>
+
+    <h3>(1) A CI step that runs a non-interactive, parseable review</h3>
+    <div class="codewrap solo"><pre><code><span class="cm"># CI review step — flags are VERSION-SENSITIVE; confirm names in current docs.</span>
+<span class="hl"><span class="fn">claude</span> <span class="kw">-p</span> <span class="st">"Review this diff for correctness bugs. Flag only when claimed behavior contradicts the code."</span> \</span>
+<span class="hl">  <span class="kw">--output-format</span> json \</span>
+<span class="hl">  <span class="kw">--json-schema</span> findings.schema.json</span>
+
+<span class="cm"># Pipe the JSON to a parser. Schema-constrained output lands in .structured_output</span>
+<span class="fn">claude</span> <span class="kw">-p</span> <span class="st">"Review this diff for correctness bugs."</span> \
+  <span class="kw">--output-format</span> json <span class="kw">--json-schema</span> findings.schema.json \
+  | <span class="fn">jq</span> <span class="st">'.structured_output.findings[] | select(.severity == "high")'</span>
+
+<span class="cm"># Fail the build if any high-severity finding came back:</span>
+<span class="nm">count</span>=$(<span class="fn">claude</span> <span class="kw">-p</span> <span class="st">"Review this diff."</span> <span class="kw">--output-format</span> json <span class="kw">--json-schema</span> findings.schema.json \
+  | <span class="fn">jq</span> <span class="st">'[.structured_output.findings[] | select(.severity=="high")] | length'</span>)
+<span class="kw">if</span> [ <span class="st">"$count"</span> -gt <span class="nm">0</span> ]; <span class="kw">then</span> <span class="fn">echo</span> <span class="st">"❌ blocking findings"</span>; <span class="kw">exit</span> <span class="nm">1</span>; <span class="kw">fi</span></code></pre></div>
+
+    <h3>(3) A tiny findings JSON schema — <code>findings.schema.json</code></h3>
+    <div class="codewrap solo"><pre><code><span class="cm">// Constrain the model's output to this shape so CI can always parse it.</span>
+{
+  <span class="nm">"type"</span>: <span class="st">"object"</span>,
+  <span class="nm">"properties"</span>: {
+    <span class="hl"><span class="nm">"findings"</span>: {</span>
+      <span class="nm">"type"</span>: <span class="st">"array"</span>,
+      <span class="nm">"items"</span>: {
+        <span class="nm">"type"</span>: <span class="st">"object"</span>,
+        <span class="nm">"properties"</span>: {
+          <span class="nm">"file"</span>:     { <span class="nm">"type"</span>: <span class="st">"string"</span> },
+          <span class="nm">"line"</span>:     { <span class="nm">"type"</span>: <span class="st">"integer"</span> },
+          <span class="nm">"severity"</span>: { <span class="nm">"type"</span>: <span class="st">"string"</span>, <span class="nm">"enum"</span>: [<span class="st">"low"</span>, <span class="st">"medium"</span>, <span class="st">"high"</span>] },
+          <span class="nm">"issue"</span>:    { <span class="nm">"type"</span>: <span class="st">"string"</span> }
+        },
+        <span class="nm">"required"</span>: [<span class="st">"file"</span>, <span class="st">"line"</span>, <span class="st">"severity"</span>, <span class="st">"issue"</span>]
+      }
+    }
+  },
+  <span class="nm">"required"</span>: [<span class="st">"findings"</span>]
+}</code></pre></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>Independent review beats self-review</h2>
+    <p class="lead">A model grading its <b>own</b> work is biased — it's already convinced the work is correct,
+       so it under-reports its own mistakes. The robust pattern is a <b>separate Claude Code invocation</b> that
+       only sees the diff and reviews it cold.</p>
+
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>Self-review — biased</h4>
+        <p>The same instance that wrote the change then reviews the change. It's anchored on its own reasoning
+           and tends to confirm rather than challenge. Weak signal for a gate.</p>
+      </div>
+      <div class="compare good">
+        <h4>Independent instance — unbiased</h4>
+        <p>A <b>fresh</b> <code>claude -p</code> invocation gets the diff and a tight review prompt, with no
+           memory of having authored it. It evaluates on the merits. Stronger, more trustworthy signal.</p>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <div class="h">✅ The rule</div>
+      <p>For a review gate, spin up an <b>independent review instance</b> (a separate Claude Code run over the
+         diff). Don't ask the author instance to grade itself.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>Distractors that DO NOT EXIST</h2>
+    <p class="lead">The exam leans hard on plausible-sounding flags and env vars that aren't real. If you see
+       either of these as an answer, it's wrong.</p>
+
+    <table>
+      <thead><tr><th>Looks real, isn't</th><th>What's actually true</th></tr></thead>
+      <tbody>
+        <tr class="row-bad"><td><code>CLAUDE_HEADLESS</code> env var</td><td><b>Does not exist.</b> There is no env var that puts Claude Code in headless mode. Headless = passing <code>-p</code>/<code>--print</code> on the command line.</td></tr>
+        <tr class="row-bad"><td><code>--batch</code> flag</td><td><b>Does not exist on the CLI.</b> "Batching" is the Message Batches <b>API</b> (a separate Anthropic API feature), unrelated to the Claude Code command line.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <div class="h">⚠️ Don't reach for an env var or <code>--batch</code></div>
+      <p>Non-interactive mode is a <b>flag</b> (<code>-p</code>/<code>--print</code>), not an environment variable.
+         There is no <code>CLAUDE_HEADLESS</code>, and there is no CLI <code>--batch</code> — Message Batches is
+         an API concept, not a <code>claude</code> command-line option.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>Useful commands to contrast</h2>
+    <p class="lead">A few interactive helpers worth recognising — and where they fit relative to the headless CI flow.</p>
+    <ul class="clean">
+      <li><b><code>/memory</code></b> — shows which <b>memory files are loaded</b> into the session (project + user CLAUDE.md, etc.). Use it to debug "why does Claude think X?".</li>
+      <li><b><code>/compact</code></b> — <b>condenses / reduces context</b> when the window is filling up, summarising the conversation so far so the session can keep going.</li>
+      <li><b><code>--resume</code></b> — resumes a specific prior <b>session</b> by id (works with <code>-p</code> too: capture the <code>session_id</code> from JSON output, then pass it to <code>--resume</code>).</li>
+      <li><b>Explore subagent</b> — use it for <b>verbose discovery</b>; it does the noisy "what's in this repo" exploration in a subagent so that noise stays <b>out of the main thread's</b> context.</li>
+    </ul>
+    <div class="callout note">
+      <div class="h">ℹ️ <code>/memory</code>, <code>/compact</code> are interactive</div>
+      <p>Slash commands like <code>/memory</code> and <code>/compact</code> belong to the interactive REPL. The CI
+         story is the opposite end: <code>-p</code> + structured output. Keep the two mental models distinct.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">6</span>Try it — CLI command builder</h2>
+    <p class="lead">Toggle the choices a CI author actually makes. The assembled command and a verdict update live.
+       Watch what happens to the verdict the moment you drop <code>-p</code>.</p>
+
+    <div class="demo">
+      <h4>Build the CI command</h4>
+      <div class="btnrow">
+        <span class="chip active" id="mPrint" role="button" tabindex="0">Mode: <b>-p / --print</b></span>
+        <span class="chip" id="mInter" role="button" tabindex="0">Mode: interactive</span>
+      </div>
+      <div class="btnrow">
+        <span class="chip active" id="oJson" role="button" tabindex="0">--output-format json: <b>on</b></span>
+        <span class="chip" id="oOff" role="button" tabindex="0">--output-format json: off</span>
+      </div>
+      <div class="btnrow">
+        <span class="chip active" id="rIndep" role="button" tabindex="0">Review: <b>independent instance</b></span>
+        <span class="chip" id="rSelf" role="button" tabindex="0">Review: self-review</span>
+      </div>
+
+      <div class="out" id="cmdOut"></div>
+      <div class="out" id="verdictOut"></div>
+      <div class="narrate" id="builderNarrate"></div>
+    </div>
+
+    <div class="callout note">
+      <div class="h">ℹ️ Reminder while you build</div>
+      <p><code>CLAUDE_HEADLESS</code> and <code>--batch</code> are <b>not real</b> — the builder never offers them
+         because they don't exist. Headless is the <code>-p</code> flag; batching is an API feature, not a CLI flag.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">7</span>How this shows up on the exam</h2>
+
+    <div class="callout key">
+      <div class="h">Scenario → answer</div>
+      <p><b>Scenario:</b> You wire <code>claude "review this diff"</code> into a CI job. The job <b>hangs and
+         never returns</b>. Once you fix that, you want the pipeline to <b>parse the findings</b> and fail the
+         build on serious bugs — and you want the review to be <b>trustworthy</b>, not the author grading itself.<br>
+         <b>Answer:</b> Add <b><code>-p</code>/<code>--print</code></b> so the run is non-interactive and exits
+         (that's the hang fix). Use <b><code>--output-format json</code></b>, constrained with
+         <b><code>--json-schema</code></b>, so CI can parse findings reliably. Run the review from a
+         <b>separate, independent Claude Code instance</b> over the diff rather than self-review. And don't be
+         fooled by <code>CLAUDE_HEADLESS</code> or <code>--batch</code> — neither exists.</p>
+    </div>
+
+    <ul class="clean">
+      <li><b><code>-p</code>/<code>--print</code> fixes the CI hang.</b> Bare <code>claude</code> opens the interactive REPL and blocks on input forever; <code>-p</code> runs once, prints, and exits.</li>
+      <li><b><code>--output-format json</code> (+ <code>--json-schema</code>) for parseable findings.</b> JSON envelope for scripting; schema-constrain to a fixed shape (output in <code>structured_output</code>) and parse with <code>jq</code>.</li>
+      <li><b>Independent review beats self-review.</b> A separate instance over the diff is unbiased; a model grading its own work is not.</li>
+      <li><b><code>CLAUDE_HEADLESS</code> and <code>--batch</code> are non-existent distractors.</b> Headless = the <code>-p</code> flag (not an env var); batching = the Message Batches API (not a CLI flag).</li>
+      <li><b>Contrast helpers:</b> <code>/memory</code> (which memory loaded), <code>/compact</code> (condense context), <code>--resume</code> (resume a session), Explore subagent (verbose discovery off the main thread). All version-sensitive — verify in docs.</li>
+    </ul>
+
+    <div class="btnrow" style="margin-top:14px">
+      <a class="pill" href="index.html#d3">→ D3 module</a>
+      <a class="pill" href="index.html#flash">→ Flashcards</a>
+      <a class="pill" href="index.html#quiz">→ Quiz</a>
+      <a class="pill" href="subagents.html">→ Subagents &amp; the coordinator pattern</a>
+    </div>
+  </div>
+
+  <div class="footer">CCA Foundations · Domain 3 — Claude Code · Headless &amp; non-interactive CI workflows</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  function byId(id) { return document.getElementById(id); }
+
+  // State
+  var state = { print: true, json: true, indep: true };
+
+  // Chip groups: [activeWhenTrueEl, activeWhenFalseEl, stateKey]
+  var groups = [
+    ["mPrint", "mInter", "print"],
+    ["oJson", "oOff", "json"],
+    ["rIndep", "rSelf", "indep"]
+  ];
+
+  var cmdOut = byId("cmdOut");
+  var verdictOut = byId("verdictOut");
+  var narrate = byId("builderNarrate");
+
+  function esc(s) { return s; }
+
+  function render() {
+    // Assemble the command string from current state.
+    var parts = ["claude"];
+    if (state.print) { parts.push("-p"); }
+    parts.push('"Review this diff for correctness bugs."');
+    if (state.json) { parts.push("--output-format json", "--json-schema findings.schema.json"); }
+
+    var cmd = parts.join(" ");
+    // Show the review-instance dimension as a comment, since it's an
+    // invocation-design choice rather than a single flag.
+    var reviewNote = state.indep
+      ? "  # run from a SEPARATE, independent instance over the diff"
+      : "  # ⚠ author instance grading its own work (biased)";
+
+    cmdOut.className = "out";
+    cmdOut.textContent = cmd + "\n" + reviewNote;
+
+    // Verdict logic.
+    if (!state.print) {
+      verdictOut.className = "out bad";
+      verdictOut.textContent = "⚠ will hang in CI — no -p/--print, so claude opens the interactive REPL and blocks on input forever.";
+      narrate.textContent = "Fix first: add -p/--print so the run is non-interactive and exits.";
+      return;
+    }
+
+    if (state.print && state.json && state.indep) {
+      verdictOut.className = "out good";
+      verdictOut.textContent = "✓ CI-ready, parseable, unbiased — -p exits cleanly, JSON (+ schema) parses reliably, independent instance reviews the diff.";
+      narrate.textContent = "This is the target shape: non-interactive + machine-parseable + independent review.";
+      return;
+    }
+
+    // -p present but missing one of the quality dimensions.
+    verdictOut.className = "out";
+    var gaps = [];
+    if (!state.json) { gaps.push("output isn't machine-parseable (add --output-format json, ideally --json-schema)"); }
+    if (!state.indep) { gaps.push("self-review is biased (use a separate independent instance)"); }
+    verdictOut.textContent = "▸ won't hang (good, -p is set), but: " + gaps.join("; ") + ".";
+    narrate.textContent = "No hang — but not yet the robust CI pattern. Close the gaps above.";
+  }
+
+  function wireGroup(trueId, falseId, key) {
+    var t = byId(trueId), f = byId(falseId);
+    function set(val) {
+      state[key] = val;
+      t.classList.toggle("active", val);
+      f.classList.toggle("active", !val);
+      render();
+    }
+    clickKey(t, function () { set(true); });
+    clickKey(f, function () { set(false); });
+  }
+
+  function clickKey(el, fn) {
+    el.addEventListener("click", fn);
+    el.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); }
+    });
+  }
+
+  groups.forEach(function (g) { wireGroup(g[0], g[1], g[2]); });
+  render();
+})();
+</script>
+</body>
+</html>

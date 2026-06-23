@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subagents &amp; the coordinator pattern — in practice · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D1 · Orchestration · 27%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">Orchestrator-worker · hub-and-spoke</div>
+    <h1>Subagents &amp; the coordinator pattern</h1>
+    <p>A coordinator spawns specialized subagents via the <code>Task</code> tool to parallelize work,
+       keep the main context lean, and run cheaper models on sub-tasks. The catch the exam hammers on:
+       each subagent runs in its <b>own isolated context</b> and inherits <b>none</b> of the coordinator's
+       conversation history. If output misses whole sub-topics, the bug is the coordinator's
+       <b>decomposition</b> — not the subagents.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">ℹ️ Verified against the Claude API / Agent SDK reference</div>
+    <p>Concepts (Task-tool spawning, isolated context, parallel = N Task calls in one response) are verified;
+       SDK identifiers in the code below are illustrative — default model <code>claude-opus-4-8</code>.
+       Verify exact identifiers (<code>AgentDefinition</code> shape, <code>fork_session</code>, hook timing,
+       the <code>allowedTools ⊇ "Task"</code> requirement) in the current SDK docs.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>What a subagent is</h2>
+    <p class="lead">A subagent is a child agent the coordinator launches to handle one slice of the work.
+       It is spawned through the <b>Task</b> tool, so the coordinator's <code>allowedTools</code> must include
+       <code>"Task"</code> — without it, the coordinator literally cannot fan out.</p>
+
+    <h3>Why use them at all</h3>
+    <ul class="clean">
+      <li><b>Parallelize</b> independent workstreams — research three industries at once instead of one after another.</li>
+      <li><b>Keep the main context lean</b> — verbose discovery (file reads, search dumps, dead ends) happens in the child; only the child's <i>conclusion</i> comes back to the coordinator.</li>
+      <li><b>Use a cheaper model per sub-task</b> — e.g. an Explore-style subagent on a smaller model, while the coordinator stays on <code>claude-opus-4-8</code>.</li>
+    </ul>
+
+    <div class="callout key">
+      <div class="h">⚠️ The #1 tested gotcha — isolated context</div>
+      <p>Each subagent runs with its <b>own isolated context window</b> and does <b>not</b> see the
+         coordinator's conversation history. Anything the child needs — the goal, constraints, prior
+         findings, definitions — must be passed <b>explicitly in the Task prompt</b>. Assume the child
+         knows nothing beyond that prompt.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>Hub-and-spoke: the topology</h2>
+    <p class="lead">The coordinator is the hub. Subagents are spokes. The hub holds the shared goal and
+       assembles results; each spoke gets only what the hub hands it and reports back a single result.
+       Spokes never talk to each other and never see each other's context.</p>
+
+    <div class="demo">
+      <h4>Context flow</h4>
+      <ol class="steps">
+        <li><b>Coordinator decomposes the request</b><span> — decides which subagents to run and what each one needs to know.</span></li>
+        <li><b>Coordinator emits Task call(s)</b><span> — each Task prompt carries an explicit, self-contained brief (the child can't read history).</span></li>
+        <li><b>Each subagent runs in isolation</b><span> — fresh context, scoped tools; does its slice; returns one result.</span></li>
+        <li><b>Coordinator merges results</b><span> — synthesizes the spokes' outputs into the final answer.</span></li>
+      </ol>
+    </div>
+
+    <div class="grid2">
+      <div class="compare good">
+        <h4>Brief that works</h4>
+        <p>"Research the <b>music industry</b> under <i>creative industries</i>. Cover revenue model, key players, 2024 trends. Return a 5-bullet summary." — self-contained; the child needs no history.</p>
+      </div>
+      <div class="compare bad">
+        <h4>Brief that fails</h4>
+        <p>"Research it like we discussed." — the child never saw "what we discussed." It has no history. It will guess or stall.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>Sequential vs parallel = where the Task calls go</h2>
+    <p class="lead">This is a pure mechanics question the exam likes: <b>parallel</b> subagents means emitting
+       <b>multiple Task tool calls in a single assistant response</b>. <b>Sequential</b> means one Task per
+       turn — you wait for the child's result before deciding the next call.</p>
+
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>Sequential — 1 Task per turn</h4>
+        <p>Turn 1 → Task(music) → wait. Turn 2 → Task(film) → wait. Turn 3 → Task(games). Slow, but lets each call depend on the last result.</p>
+      </div>
+      <div class="compare good">
+        <h4>Parallel — N Tasks, one response</h4>
+        <p>One assistant response contains Task(music) + Task(film) + Task(games). All three children run concurrently. Use when the slices are independent.</p>
+      </div>
+    </div>
+
+    <div class="demo">
+      <h4>Fan-out visualizer</h4>
+      <div class="btnrow">
+        <span class="chip active" id="modeSeq" role="button" tabindex="0">Sequential (1 per turn)</span>
+        <span class="chip" id="modePar" role="button" tabindex="0">Parallel (all in one response)</span>
+      </div>
+      <div class="btnrow">
+        <button class="btn" id="spawnBtn">Spawn subagents in one response</button>
+        <button class="btn" id="resetBtn">Reset</button>
+      </div>
+      <div class="narrate" id="fanNarrate">Coordinator ready. Pick a mode, then spawn.</div>
+      <div id="coordBox" class="out">🛰️ <b>Coordinator</b> — holds the shared goal &amp; conversation history. <code>allowedTools</code> includes <code>"Task"</code>.</div>
+      <div id="spokes" class="grid2" style="margin-top:12px"></div>
+    </div>
+    <p class="lead" style="margin-top:10px">In parallel mode the three subagent cards appear together (one
+       response, one fan-out). In sequential mode they appear one at a time. Either way, every card shows the
+       same truth: <b>context: ISOLATED — only what the coordinator passed in the prompt.</b></p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>Coordinator that fans out (illustrative)</h2>
+    <p class="lead">An Agent-SDK-style coordinator emitting <b>multiple Task calls in one response</b>. Note
+       every Task prompt re-states the goal and constraints inline — because the child cannot see this
+       conversation. <i>Illustrative shape — verify exact identifiers in the current SDK docs.</i></p>
+
+    <div class="codewrap solo"><pre><code><span class="cm"># Illustrative — coordinator must have "Task" in allowedTools to spawn children</span>
+coordinator = <span class="fn">Agent</span>(
+    model=<span class="st">"claude-opus-4-8"</span>,
+    <span class="hl">allowedTools=[<span class="st">"Task"</span>, <span class="st">"Read"</span>],   <span class="cm"># no "Task" → cannot fan out at all</span></span>
+    system=<span class="st">"You are a research coordinator. Decompose the request into "</span>
+           <span class="st">"INDEPENDENT sub-topics and spawn ONE subagent per sub-topic."</span>,
+)
+
+<span class="cm"># PARALLEL fan-out: emit N Task calls in a SINGLE assistant response.</span>
+<span class="cm"># Each prompt is self-contained — the child inherits NONE of this history.</span>
+coordinator.<span class="fn">respond</span>([
+    <span class="fn">Task</span>(
+        subagent=<span class="st">"researcher"</span>,
+        <span class="hl">prompt=<span class="st">"Goal: survey CREATIVE INDUSTRIES. Sub-topic: MUSIC. "</span></span>
+               <span class="st">"Cover revenue model, top players, 2024 trends. Return 5 bullets."</span>,
+    ),
+    <span class="fn">Task</span>(
+        subagent=<span class="st">"researcher"</span>,
+        prompt=<span class="st">"Goal: survey CREATIVE INDUSTRIES. Sub-topic: FILM. "</span>
+               <span class="st">"Cover revenue model, top players, 2024 trends. Return 5 bullets."</span>,
+    ),
+    <span class="fn">Task</span>(
+        subagent=<span class="st">"researcher"</span>,
+        prompt=<span class="st">"Goal: survey CREATIVE INDUSTRIES. Sub-topic: VIDEO GAMES. "</span>
+               <span class="st">"Cover revenue model, top players, 2024 trends. Return 5 bullets."</span>,
+    ),
+])
+<span class="cm"># SEQUENTIAL instead would be: one Task() per turn, awaiting each result.</span></code></pre></div>
+
+    <div class="callout tip">
+      <div class="h">✅ Read the contrast</div>
+      <p>Three <code>Task(...)</code> calls inside one <code>respond([...])</code> = parallel fan-out.
+         If those same calls were spread across three separate turns, that's sequential.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>A specialized subagent (illustrative)</h2>
+    <p class="lead">An <code>AgentDefinition</code>-style config for one specialized worker. Note the
+       <b>scoped, least-privilege toolset</b> — a researcher gets read/search tools, not write or shell.
+       <i>Shape varies — verify in current SDK docs.</i></p>
+
+    <div class="codewrap solo"><pre><code><span class="cm"># Illustrative AgentDefinition — exact fields vary; verify in current SDK docs</span>
+researcher = <span class="fn">AgentDefinition</span>(
+    name=<span class="st">"researcher"</span>,
+    description=<span class="st">"Researches ONE assigned sub-topic in isolation and returns a summary."</span>,
+    model=<span class="st">"claude-opus-4-8"</span>,   <span class="cm"># or a cheaper model for an Explore-style worker</span>
+    system=<span class="st">"You research exactly the sub-topic given in your prompt. "</span>
+           <span class="st">"You have NO access to the coordinator's history — work only from your prompt."</span>,
+    <span class="hl">allowedTools=[<span class="st">"WebSearch"</span>, <span class="st">"Read"</span>],   <span class="cm"># least privilege: no Write, no Bash, no Task</span></span>
+)</code></pre></div>
+
+    <ul class="clean">
+      <li><b>Least privilege</b> — scope each subagent's tools to exactly what its job needs. A research worker should not be able to write files or spawn its own subagents.</li>
+      <li><b>Self-contained system prompt</b> — restate that the child works only from its prompt, reinforcing the isolated-context reality.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">6</span>Root-cause: blame the coordinator's decomposition</h2>
+    <p class="lead">The exam's classic failure: a "research the creative industries" task comes back covering
+       <b>only the visual arts</b>. The subagents each executed their assignments correctly — they faithfully
+       researched what they were told to. The defect is upstream: the coordinator <b>decomposed the request
+       too narrowly</b>, only ever spawning visual-arts subagents.</p>
+
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>Wrong fix</h4>
+        <p>"Rewrite the subagent prompts / make the subagents smarter." The subagents did their wrong assignments correctly — they aren't the bug.</p>
+      </div>
+      <div class="compare good">
+        <h4>Right fix</h4>
+        <p>Fix the <b>coordinator's decomposition</b> so it dynamically selects the full set of sub-topics (music, film, games, design…) — not a fixed or truncated pipeline.</p>
+      </div>
+    </div>
+
+    <div class="callout key">
+      <div class="h">🎯 Root-cause principle</div>
+      <p>If output <b>misses whole sub-topics</b>, fix the <b>coordinator's decomposition</b>, not the
+         subagents. The coordinator should <b>dynamically select</b> which subagents to run based on the
+         request — not always run a fixed, full pipeline, and not stop short.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">7</span>How this shows up on the exam</h2>
+
+    <div class="callout key">
+      <div class="h">Scenario → answer</div>
+      <p><b>Scenario:</b> A coordinator was asked to research "creative industries," but the report only
+         covers visual arts. Each subagent's output is accurate for the topic it was given. What do you fix?<br>
+         <b>Answer:</b> The <b>coordinator's decomposition</b> — it under-selected sub-topics. The subagents
+         correctly executed their (wrong) assignments, so they are not the root cause.</p>
+    </div>
+
+    <ul class="clean">
+      <li><b>Loop / decomposition bugs are the coordinator's fault.</b> Missing whole sub-topics → fix decomposition, not the workers.</li>
+      <li><b>Isolated context must be passed explicitly.</b> Subagents inherit no history; if a child "doesn't know" something, the Task prompt didn't include it.</li>
+      <li><b>Parallel = multiple Task calls in one assistant response.</b> Sequential = one Task per turn.</li>
+      <li><b>Least-privilege scoped tools per subagent.</b> Give each worker only the tools its job requires.</li>
+      <li><b>Coordinator needs <code>"Task"</code> in <code>allowedTools</code></b> to spawn subagents at all.</li>
+      <li><b>Dynamic selection, not a fixed pipeline.</b> The coordinator chooses which subagents to run from the request.</li>
+    </ul>
+
+    <div class="btnrow" style="margin-top:14px">
+      <a class="pill" href="index.html#d1">→ D1 module</a>
+      <a class="pill" href="index.html#flash">→ Flashcards</a>
+      <a class="pill" href="index.html#quiz">→ Quiz</a>
+      <a class="pill" href="stop-reason.html">→ The agentic loop &amp; stop_reason</a>
+    </div>
+  </div>
+
+  <div class="footer">CCA Foundations · Domain 1 — Orchestration · subagents &amp; the orchestrator-worker pattern</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var mode = "seq"; // "seq" | "par"
+  var chipSeq = document.getElementById("modeSeq");
+  var chipPar = document.getElementById("modePar");
+  var spawnBtn = document.getElementById("spawnBtn");
+  var resetBtn = document.getElementById("resetBtn");
+  var spokes = document.getElementById("spokes");
+  var narrate = document.getElementById("fanNarrate");
+
+  var WORKERS = [
+    { topic: "MUSIC", emoji: "🎵" },
+    { topic: "FILM", emoji: "🎬" },
+    { topic: "VIDEO GAMES", emoji: "🕹️" }
+  ];
+
+  function makeCard(w) {
+    var d = document.createElement("div");
+    d.className = "compare good";
+    d.style.animation = "pop .28s ease both";
+    d.innerHTML =
+      '<h4>' + w.emoji + ' subagent · ' + w.topic + '</h4>' +
+      '<p><b>context: ISOLATED</b> — only what the coordinator passed in the prompt. ' +
+      'No conversation history. Scoped tools only.</p>';
+    return d;
+  }
+
+  function setMode(next) {
+    mode = next;
+    chipSeq.classList.toggle("active", mode === "seq");
+    chipPar.classList.toggle("active", mode === "par");
+    spawnBtn.textContent = mode === "par"
+      ? "Spawn subagents in one response"
+      : "Spawn next subagent (this turn)";
+    reset();
+  }
+
+  function reset() {
+    spokes.innerHTML = "";
+    narrate.textContent = mode === "par"
+      ? "Parallel mode: one response will emit 3 Task calls at once."
+      : "Sequential mode: one Task per turn — spawn them one at a time.";
+  }
+
+  function spawnParallel() {
+    spokes.innerHTML = "";
+    narrate.textContent = "One assistant response → 3 Task() calls → 3 isolated subagents run concurrently.";
+    WORKERS.forEach(function (w) { spokes.appendChild(makeCard(w)); });
+  }
+
+  function spawnSequential() {
+    var n = spokes.children.length;
+    if (n >= WORKERS.length) {
+      narrate.textContent = "All 3 subagents spawned — one Task per turn. Coordinator now merges results.";
+      return;
+    }
+    var w = WORKERS[n];
+    spokes.appendChild(makeCard(w));
+    narrate.textContent = "Turn " + (n + 1) + ": Task(" + w.topic + ") → awaiting its result before the next call.";
+  }
+
+  spawnBtn.addEventListener("click", function () {
+    if (mode === "par") spawnParallel();
+    else spawnSequential();
+  });
+  resetBtn.addEventListener("click", reset);
+  chipSeq.addEventListener("click", function () { setMode("seq"); });
+  chipPar.addEventListener("click", function () { setMode("par"); });
+  chipSeq.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setMode("seq"); } });
+  chipPar.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setMode("par"); } });
+
+  reset();
+})();
+</script>
+</body>
+</html>

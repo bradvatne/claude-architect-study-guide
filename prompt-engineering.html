@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prompt engineering for reliable judgment · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D4 · Prompting &amp; Structured Output · 20%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">Domain 4 · Prompting &amp; Structured Output</div>
+    <h1>Prompt engineering for reliable judgment</h1>
+    <p>The tested skill here is picking the <em>right lever</em> for a reliability problem. Vague confidence language ("be conservative", "only high-confidence") does <b>not</b> improve precision — <b>explicit, checkable criteria</b> do. Few-shot examples that <b>show the reasoning</b> teach borderline judgment. Retry-with-error-feedback repairs <b>format</b> problems but cannot conjure data that isn't in the source. And on a large input, <b>multi-pass / independent-instance review</b> beats single-pass — a bigger context window does <em>not</em> fix attention dilution. This page drills each lever and its named distractor.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">ℹ️ Verified against the Claude API reference</div>
+    <p>System/user/assistant messages and few-shot pairs go in the <code>messages</code> array; retry loops re-call <code>client.messages.create()</code> and append the parser error as feedback. Default model <code>claude-opus-4-8</code>, <code>max_tokens</code> 16000.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>Explicit criteria beat vague confidence language</h2>
+    <p class="lead">The most common wrong answer in this domain is "tell the model to be conservative / only report high-confidence issues." That language does <em>not</em> raise precision — it just makes the model silently drop findings. Concrete, checkable criteria are what actually steer judgment.</p>
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>✗ Vague — "be conservative"</h4>
+        <p>"Only report high-confidence issues. Be conservative; don't nitpick." Capable models follow this <em>literally</em> — they investigate just as hard, then decline to report findings below the fuzzy bar. Measured recall drops, precision doesn't reliably climb, and behavior is unpredictable run to run.</p>
+      </div>
+      <div class="compare good">
+        <h4>✓ Explicit — checkable criterion</h4>
+        <p>"Flag a finding ONLY when the claimed behavior in a comment/docstring contradicts what the code actually does." A concrete test the model can apply to each candidate. Same idea downstream: report everything with a confidence + severity, and filter <em>later</em>.</p>
+      </div>
+    </div>
+    <div class="codewrap solo"><pre><code><span class="cm"># System prompt with EXPLICIT criteria for a code-review pass.</span>
+<span class="cm"># Note: ask for EVERYTHING + confidence + severity; filter downstream.</span>
+SYSTEM = <span class="st">"""You are reviewing a pull request for correctness bugs.</span>
+<span class="hl"><span class="st">Flag a finding ONLY when the claimed behavior (a comment, docstring,</span></span>
+<span class="hl"><span class="st">log message, or test name) CONTRADICTS what the code actually does.</span></span>
+<span class="st">A mismatch between stated intent and real behavior is a finding;</span>
+<span class="st">a stylistic preference is not.</span>
+
+<span class="st">Report EVERY contradiction you find, including low-severity and</span>
+<span class="st">uncertain ones. Do NOT filter for importance or confidence here —</span>
+<span class="hl"><span class="st">a separate verification step ranks and drops findings.</span></span>
+<span class="st">For each finding return: location, the claim, the actual behavior,</span>
+<span class="st">a confidence in {low, medium, high}, and a severity in {nit, minor, major}."""</span>
+
+response = client.messages.create(
+    model=<span class="st">"claude-opus-4-8"</span>,
+    max_tokens=<span class="nm">16000</span>,
+    system=SYSTEM,
+    messages=[{<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: diff_text}],
+)</code></pre></div>
+    <div class="callout key">
+      <div class="h">🎯 The one fact to memorize</div>
+      <p><b>Explicit checkable criteria &gt; vague confidence language.</b> "Be conservative" / "only high-confidence" / a self-rated confidence score do not improve precision. On capable models, "report only high-severity" can even make measured <em>recall drop</em> — so report everything with confidence + severity and filter <b>downstream</b>.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>Few-shot is the lever for consistent formatting &amp; borderline judgment</h2>
+    <p class="lead">When the problem is inconsistent output shape or wobbly calls on ambiguous cases, the fix is <b>2–4 targeted few-shot examples</b> — and the examples must <b>show the reasoning</b> for the choice, not just map input→label. Examples that include the <em>why</em> teach the model where the boundary is.</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># Few-shot: each example SHOWS THE REASONING for the borderline call,</span>
+<span class="cm"># so the model learns the boundary instead of memorizing labels.</span>
+messages = [
+    {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="st">"# returns the user's age in years\ndef get_age(u): return u.dob"</span>},
+    {<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>:
+        <span class="hl"><span class="st">"FINDING. The comment claims it returns an age in years, but the code"</span></span>
+        <span class="st">" returns u.dob (a date). Stated behavior contradicts actual behavior."</span>
+        <span class="st">" confidence=high severity=major"</span>},
+
+    {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="st">"# fast path for the common case\nif n &lt; 0: raise ValueError"</span>},
+    {<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>:
+        <span class="hl"><span class="st">"NO FINDING. The comment is vague flavor text, not a behavioral claim"</span></span>
+        <span class="st">" that the code contradicts. Validating a negative input is consistent"</span>
+        <span class="st">" with a guard. Not every imperfect comment is a contradiction."</span>},
+
+    {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="st">"# retries up to 3 times\nfor _ in range(5): try_call()"</span>},
+    {<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>:
+        <span class="st">"FINDING. Comment says 'up to 3 times' but the loop runs 5. The number"</span>
+        <span class="st">" in the claim contradicts the literal in the code. confidence=high severity=minor"</span>},
+
+    <span class="cm"># --- the real input ---</span>
+    {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: candidate_snippet},
+]
+response = client.messages.create(model=<span class="st">"claude-opus-4-8"</span>, max_tokens=<span class="nm">16000</span>, messages=messages)</code></pre></div>
+    <div class="callout tip">
+      <div class="h">✅ Why "show the reasoning" matters</div>
+      <p>Input→label pairs teach the model <em>what</em> you decided, not <em>how</em>. The borderline "NO FINDING" example above is doing the heavy lifting: it teaches the model the difference between flavor-text and a behavioral claim — exactly the boundary that an ambiguous case sits on. 2–4 such examples are usually enough.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>Retry-with-error-feedback fixes format, not absence</h2>
+    <p class="lead">When the parser or validator rejects the output, feed the error text back and re-call. This reliably repairs <b>structural / format</b> failures — bad JSON, a missing key, the wrong type. It does <b>nothing</b> when the required information is simply not in the source: you cannot retry your way to data that isn't there.</p>
+    <div class="codewrap solo"><pre><code><span class="kw">import</span> json
+<span class="kw">def</span> <span class="fn">extract_with_retry</span>(source_text, max_retries=<span class="nm">3</span>):
+    messages = [{<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: PROMPT + source_text}]
+    <span class="kw">for</span> attempt <span class="kw">in</span> <span class="kw">range</span>(max_retries):
+        resp = client.messages.create(
+            model=<span class="st">"claude-opus-4-8"</span>, max_tokens=<span class="nm">16000</span>, messages=messages,
+        )
+        text = <span class="kw">next</span>(b.text <span class="kw">for</span> b <span class="kw">in</span> resp.content <span class="kw">if</span> b.type == <span class="st">"text"</span>)
+        <span class="kw">try</span>:
+            data = json.loads(text)
+            validate(data)            <span class="cm"># your schema / business-rule validator</span>
+            <span class="kw">return</span> data                <span class="cm"># ✓ shape is good</span>
+        <span class="kw">except</span> (json.JSONDecodeError, ValidationError) <span class="kw">as</span> e:
+            <span class="cm"># Feed the EXACT error back as feedback, then re-call.</span>
+            <span class="cm"># WORKS for format errors; does NOT conjure absent data —</span>
+            <span class="cm"># if a field is missing from the source, no retry recovers it.</span>
+            messages += [
+                {<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>: text},
+                <span class="hl">{<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="st">f"Your output failed validation: {e}. "</span></span>
+                 <span class="st">"Return corrected JSON only."</span>},
+            ]
+    <span class="kw">raise</span> RuntimeError(<span class="st">"still invalid after retries"</span>)</code></pre></div>
+    <table>
+      <thead><tr><th>Failure</th><th>Retry-with-feedback?</th><th>The actual fix</th></tr></thead>
+      <tbody>
+        <tr class="row-stop"><td>Malformed JSON / wrong type / missing key</td><td>✅ Works — model corrects the shape</td><td>Retry repairs it (a schema prevents it)</td></tr>
+        <tr class="row-bad"><td>Info simply absent from the source</td><td>❌ Useless — nothing to recover</td><td>Make the field <b>nullable</b> → model returns <code>null</code></td></tr>
+        <tr class="row-bad"><td>Huge input, attention diluting</td><td>❌ Wrong lever entirely</td><td><b>Multi-pass / independent review</b> (next card)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>Big input → multi-pass review, not a bigger window</h2>
+    <p class="lead">On a large input — say a 4,000-line PR — attention <em>dilutes</em> across the context. A single pass spreads its focus thin and misses findings. The fix is to <b>split into focused passes</b> or run <b>independent reviewer instances</b> and aggregate their findings. A bigger context window does <b>not</b> fix this — it's the classic distractor.</p>
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>✗ "Just use a bigger context window"</h4>
+        <p>The whole PR <em>fits</em> already — that was never the constraint. Fitting more tokens doesn't sharpen attention; the model still spreads its focus across the entire input and dilutes per-region scrutiny. Recall on any given file stays low.</p>
+      </div>
+      <div class="compare good">
+        <h4>✓ Multi-pass / independent instances</h4>
+        <p>Split the diff into focused chunks (or fan out N independent reviewers over the same input), each with full attention on its slice, then <b>aggregate + dedup</b> the findings. More, smaller, focused passes recover the findings a single diluted pass drops.</p>
+      </div>
+    </div>
+    <div class="callout warn">
+      <div class="h">⚠️ Two repeated wrong answers</div>
+      <p><b>(1) A bigger context window fixes attention dilution.</b> It does not — it's a named distractor. The lever is multi-pass / independent review + aggregation. <b>(2) Self-rated confidence (1–10) improves reliability.</b> It does not — self-rated confidence is uncalibrated, and a confidence score is a repeated wrong answer. Use explicit criteria and downstream filtering instead.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>Try it: which lever fixes this problem?</h2>
+    <p class="lead">Each scenario has exactly one right lever — and a tempting distractor. Pick a scenario; the correct lever shows in green and the named trap in red.</p>
+    <div class="demo">
+      <h4>Pick a reliability problem</h4>
+      <div class="btnrow" id="chiprow">
+        <button class="chip active" data-k="overflag">Reviewer over-flags / vague</button>
+        <button class="chip" data-k="format">Inconsistent formatting</button>
+        <button class="chip" data-k="json">Malformed JSON output</button>
+        <button class="chip" data-k="absent">Data missing from source</button>
+        <button class="chip" data-k="huge">Huge PR, attention diluting</button>
+      </div>
+      <div class="narrate" id="narrate"></div>
+      <div class="out good" id="lever-good"></div>
+      <div class="out bad" id="lever-bad"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">6</span>How this shows up on the exam</h2>
+    <div class="callout key">
+      <div class="h">🎯 Scenario → answer</div>
+      <p><b>Scenario:</b> "A code-review prompt says 'be conservative, only report high-confidence issues,' yet it misses real bugs. How do you improve it?" <b>Answer:</b> Replace the vague language with an <b>explicit, checkable criterion</b> ("flag only when the claimed behavior contradicts the code"), tell the model to <b>report everything with a confidence + severity</b>, and <b>filter downstream</b>. The trap answers — "add a self-rated confidence score" or "raise the confidence bar" — make recall worse.</p>
+    </div>
+    <ul class="clean">
+      <li><b>Explicit criteria &gt; vague instructions</b> — "flag only when the claim contradicts the code" beats "be conservative." Vague confidence language does not raise precision; checkable criteria do.</li>
+      <li><b>Few-shot shows the REASONING</b> — 2–4 examples that explain <em>why</em> a borderline case is/ isn't a finding; the go-to for consistent formatting and ambiguous judgment.</li>
+      <li><b>Retry-with-feedback fixes FORMAT, not missing info</b> — feed the parser/validation error back to repair structure; you can't retry your way to absent data (use a nullable field).</li>
+      <li><b>Multi-pass / independent review beats single-pass</b> on large inputs — a bigger context window does NOT fix attention dilution; that's a named distractor.</li>
+      <li><b>Self-rated confidence (1–10) is uncalibrated</b> — a repeated wrong answer. Report confidence + severity and filter downstream instead.</li>
+    </ul>
+    <div class="btnrow">
+      <a class="pill" href="index.html#d4">← Domain 4 overview</a>
+      <a class="pill" href="index.html#flash">Flashcards</a>
+      <a class="pill" href="index.html#quiz">Practice quiz</a>
+    </div>
+  </div>
+
+  <div class="footer">CCA Foundations study guide · Domain 4 · Prompting &amp; Structured Output · Verified against the Claude API reference · default model claude-opus-4-8</div>
+</div>
+
+<script>
+  // ----- which-lever chooser -----
+  var LEVERS = {
+    overflag: {
+      narrate: 'Reviewer over-flags or misses bugs under vague "be conservative" language.',
+      good: '✓ EXPLICIT CRITERIA — replace "be conservative / only high-confidence" with a checkable test ("flag ONLY when the claimed behavior contradicts the code"). Report everything with confidence + severity, then filter downstream.',
+      bad: '✗ Distractor: add a self-rated confidence score, or just tell it "only report high-confidence." Self-rated confidence is uncalibrated; raising the vague bar makes capable models drop real findings (recall falls).'
+    },
+    format: {
+      narrate: 'Output shape is inconsistent / borderline cases get classified differently each run.',
+      good: '✓ FEW-SHOT — add 2–4 targeted examples that SHOW THE REASONING for each choice (including a borderline "no finding" case). Examples teach the boundary and lock in a consistent format.',
+      bad: '✗ Distractor: pile on more imperative instructions ("ALWAYS format as…") or raise max_tokens. Prose rules don\'t teach the boundary the way worked examples do.'
+    },
+    json: {
+      narrate: 'The model returns malformed JSON / a missing key / a wrong type — the parser throws.',
+      good: '✓ RETRY-WITH-ERROR-FEEDBACK — catch the parse/validation error, append the exact error text as feedback, and re-call. This reliably repairs structural/format problems. (A schema PREVENTS them up front.)',
+      bad: '✗ Distractor: assume nothing can be done, or switch models. The shape is recoverable — feeding the error back fixes format every time.'
+    },
+    absent: {
+      narrate: 'A required field just isn\'t present in the source document.',
+      good: '✓ MAKE THE FIELD NULLABLE — give the model a legal way to report absence so it returns null instead of fabricating. (Plus a post-hoc check on your side.)',
+      bad: '✗ Distractor: retry with error feedback. You cannot retry your way to data that isn\'t in the source — retry fixes FORMAT, not ABSENCE.'
+    },
+    huge: {
+      narrate: 'A 4,000-line PR: a single review pass spreads attention thin and misses findings.',
+      good: '✓ MULTI-PASS / INDEPENDENT REVIEW — split into focused chunks or fan out independent reviewer instances, each with full attention on its slice, then aggregate + dedup.',
+      bad: '✗ Distractor: use a bigger context window. The input already fits — a larger window does NOT fix attention dilution. This is the classic named trap.'
+    }
+  };
+  var chips = document.querySelectorAll('#chiprow .chip');
+  var narrate = document.getElementById('narrate');
+  var good = document.getElementById('lever-good');
+  var bad = document.getElementById('lever-bad');
+  function pick(k) {
+    var d = LEVERS[k];
+    chips.forEach(function (c) { c.classList.toggle('active', c.dataset.k === k); });
+    narrate.textContent = d.narrate;
+    good.textContent = d.good;
+    bad.textContent = d.bad;
+  }
+  chips.forEach(function (c) { c.onclick = function () { pick(c.dataset.k); }; });
+  pick('overflag');
+</script>
+</body>
+</html>

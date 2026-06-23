@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP integration — tools, resources &amp; config · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D2 · Tools &amp; MCP · 18%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">Model Context Protocol · servers, tools &amp; resources</div>
+    <h1>MCP integration</h1>
+    <p>An MCP server exposes two things: <b>tools</b> (actions the model can call) and <b>resources</b>
+       (readable content catalogs the model can pull from). The exam leans on three calls you have to
+       make right: <b>resources reduce exploratory tool calls</b>, <b>prefer a community server</b> over
+       building your own, and know <b>where config lives</b> — <code>.mcp.json</code> (project, shared) vs
+       <code>~/.claude.json</code> (user) — with secrets injected via <code>${ENV_VAR}</code>, never hardcoded.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">ℹ️ Verified against the Claude API / MCP reference</div>
+    <p>Concepts (tools vs resources, community-vs-custom, scopes, <code>${ENV_VAR}</code> expansion, the API
+       <code>mcp_servers</code> param) are verified; default model <code>claude-opus-4-8</code>. The exact
+       Claude Code config schema is <b>version-sensitive — verify field names in the current docs</b> before
+       relying on any one shape.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>Tools vs resources — the distinction the exam tests</h2>
+    <p class="lead">Every MCP server can expose <b>both</b>. They are not the same thing, and the difference
+       is the whole point of a common exam question.</p>
+
+    <table>
+      <thead><tr><th>Primitive</th><th>What it is</th><th>Model uses it to…</th></tr></thead>
+      <tbody>
+        <tr class="row-stop"><td><code>tool</code></td><td>An <b>action</b> — a callable function with side effects or a live query.</td><td><b>Do</b> something: create a ticket, run a search, send a message.</td></tr>
+        <tr class="row-pause"><td><code>resource</code></td><td>A <b>readable content catalog</b> — addressable context the model can pull.</td><td><b>Read</b> what exists: a file listing, a schema, a doc set — without probing.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout key">
+      <div class="h">🎯 Resources REDUCE exploratory tool calls</div>
+      <p>Without a resource, the model <b>discovers what exists by probing</b> — firing many exploratory tool
+         calls (list this, search that, fetch the other) just to learn the lay of the land. A <b>resource
+         catalog</b> hands that listing to the model as readable content, so it can pull the right context in
+         <b>one read</b> instead of N guesses. <b>Tools = actions; resources = readable content/context.</b></p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>Why a resource beats four tool calls</h2>
+    <p class="lead">Concrete contrast. The model needs to know which reports exist before it answers. With only
+       tools, it explores blindly. With a resource catalog, it reads once.</p>
+
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>Without a resource — exploratory probing</h4>
+        <p><code>list_projects()</code> → <code>list_reports("acme")</code> → <code>search_reports("Q4")</code>
+           → <code>get_report_meta(7)</code>. Four round-trips, more tokens, more latency, and the model can
+           still guess wrong about what's available.</p>
+      </div>
+      <div class="compare good">
+        <h4>With a resource catalog — one read</h4>
+        <p>The server exposes a <code>reports://catalog</code> resource. The model <b>reads it once</b>, sees
+           every report id/title/date, and goes straight to the one action it actually needs.</p>
+      </div>
+    </div>
+
+    <div class="codewrap solo"><pre><code><span class="cm"># A RESOURCE = readable content catalog (one read tells the model what exists)</span>
+<span class="hl">resource: <span class="st">"reports://catalog"</span></span>
+  <span class="st">"- id=7  'Q4 Revenue'      2025-01-12"</span>
+  <span class="st">"- id=8  'Q4 Churn'        2025-01-14"</span>
+  <span class="st">"- id=9  'Q4 NPS summary'  2025-01-15"</span>
+
+<span class="cm"># A TOOL = an action the model calls once it knows what it wants</span>
+<span class="hl">tool: <span class="fn">get_report</span>(id: number) -&gt; ReportBody</span>
+
+<span class="cm"># Flow WITH the resource:  read catalog (1)  ->  get_report(7) (1)   = 2 calls</span>
+<span class="cm"># Flow WITHOUT it:          probe / list / search / meta ...          = many calls</span></code></pre></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>Prefer a community server — build custom only for proprietary needs</h2>
+    <p class="lead">For <b>standard integrations</b> — Jira, GitHub, Slack, Sentry, Postgres — a maintained
+       community/official MCP server almost certainly already exists. Use it. Reserve a <b>custom</b> server
+       for <b>team-specific or proprietary</b> systems where nothing public fits.</p>
+
+    <div class="grid2">
+      <div class="compare good">
+        <h4>Standard integration → community server</h4>
+        <p>Need Jira access? Wire up the existing community Jira MCP server. Don't reinvent auth, pagination,
+           and the issue schema — and don't carry the maintenance burden.</p>
+      </div>
+      <div class="compare bad">
+        <h4>Building custom when one exists</h4>
+        <p>Writing your own Jira MCP server from scratch is the <b>wrong answer</b>. It's wasted effort plus a
+           server you now have to maintain and secure yourself.</p>
+      </div>
+    </div>
+
+    <div class="demo">
+      <h4>Community or custom?</h4>
+      <div class="btnrow">
+        <span class="chip active" id="cJira" role="button" tabindex="0">Standard integration (Jira)</span>
+        <span class="chip" id="cGithub" role="button" tabindex="0">Standard integration (GitHub)</span>
+        <span class="chip" id="cTeam" role="button" tabindex="0">Team-specific proprietary system</span>
+      </div>
+      <div class="out" id="ccOut"></div>
+      <div class="narrate" id="ccNarrate"></div>
+    </div>
+
+    <div class="callout tip">
+      <div class="h">✅ The rule</div>
+      <p>Community/official server for anything standard; custom MCP server only when the system is
+         <b>team-specific or proprietary</b> and no public server covers it.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>Config in Claude Code — project vs user, and secrets</h2>
+    <p class="lead">Two scopes you must keep straight, and the secret-handling rule that goes with them.</p>
+
+    <table>
+      <thead><tr><th>Scope</th><th>File</th><th>Shared?</th><th>Use for</th></tr></thead>
+      <tbody>
+        <tr class="row-stop"><td><b>Project</b></td><td><code>.mcp.json</code> (project root)</td><td>Yes — checked into version control</td><td>Servers the whole team should get.</td></tr>
+        <tr class="row-pause"><td><b>User</b></td><td><code>~/.claude.json</code></td><td>No — personal to your account</td><td>Your own utility servers, across all projects.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout key">
+      <div class="h">🔑 Secrets via <code>${ENV_VAR}</code>, never hardcoded</div>
+      <p>Because <code>.mcp.json</code> is committed, you <b>cannot</b> paste a token into it. Use
+         <code>${ENV_VAR}</code> expansion so the file references a secret that each machine supplies from its
+         own environment. The shared file stays safe to commit; the secret stays out of git.</p>
+    </div>
+
+    <div class="demo">
+      <h4>Which file does this server belong in?</h4>
+      <div class="btnrow">
+        <span class="chip active" id="sTeam" role="button" tabindex="0">Whole team needs it, version-controlled</span>
+        <span class="chip" id="sPersonal" role="button" tabindex="0">Just me, across all my projects</span>
+      </div>
+      <div class="out" id="scopeOut"></div>
+    </div>
+
+    <h3>(a) Project config — <code>.mcp.json</code> with a community server + env-var secret</h3>
+    <div class="codewrap solo"><pre><code><span class="cm">// .mcp.json  (project root, committed — shared with the whole team)</span>
+<span class="cm">// Schema is VERSION-SENSITIVE — verify field names in the current Claude Code docs.</span>
+{
+  <span class="nm">"mcpServers"</span>: {
+    <span class="cm">// A community/official server for a STANDARD integration (don't build your own)</span>
+    <span class="nm">"github"</span>: {
+      <span class="nm">"command"</span>: <span class="st">"npx"</span>,
+      <span class="nm">"args"</span>: [<span class="st">"-y"</span>, <span class="st">"@modelcontextprotocol/server-github"</span>],
+      <span class="hl"><span class="nm">"env"</span>: { <span class="nm">"GITHUB_TOKEN"</span>: <span class="st">"${GITHUB_TOKEN}"</span> }   <span class="cm">// secret injected, NOT hardcoded</span></span>
+    },
+    <span class="cm">// Remote server form: type + url (no credentials baked into the file)</span>
+    <span class="nm">"sentry"</span>: { <span class="nm">"type"</span>: <span class="st">"http"</span>, <span class="nm">"url"</span>: <span class="st">"https://mcp.sentry.dev/mcp"</span> }
+  }
+}
+
+<span class="cm">// User-scoped equivalent lives in ~/.claude.json (personal, NOT committed).</span>
+<span class="cm">// ${VAR:-default} also works, e.g. "${CLAUDE_PROJECT_DIR:-.}".</span></code></pre></div>
+
+    <div class="callout warn">
+      <div class="h">⚠️ Don't trust the exact shape from memory</div>
+      <p>Field names and accepted <code>type</code> values evolve between Claude Code versions. Treat the JSON
+         above as the <b>concept</b> (an <code>mcpServers</code> map, <code>command</code>/<code>args</code>/<code>env</code>
+         for stdio, <code>type</code>+<code>url</code> for remote, <code>${ENV_VAR}</code> for secrets) and
+         confirm specifics in the current docs.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>Connecting the Claude API directly to a remote MCP server</h2>
+    <p class="lead">Separate from Claude Code's files, the <b>Claude Messages API</b> can talk to a remote MCP
+       server itself via the <code>mcp_servers</code> request param plus a beta header. Credentials are kept
+       <b>out of the server declaration</b> — supplied as auth, not embedded in the URL list.</p>
+
+    <div class="codewrap solo"><pre><code><span class="kw">import</span> anthropic
+
+client = anthropic.<span class="fn">Anthropic</span>()
+
+resp = client.<span class="fn">messages</span>.<span class="fn">create</span>(
+    model=<span class="st">"claude-opus-4-8"</span>,
+    max_tokens=<span class="nm">1024</span>,
+    messages=[{<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="st">"List my open GitHub PRs."</span>}],
+    <span class="hl">mcp_servers=[{</span>
+        <span class="st">"type"</span>: <span class="st">"url"</span>,
+        <span class="st">"name"</span>: <span class="st">"github"</span>,
+        <span class="st">"url"</span>: <span class="st">"https://api.githubcopilot.com/mcp/"</span>,
+    <span class="hl">}],</span>
+    <span class="hl">extra_headers={<span class="st">"anthropic-beta"</span>: <span class="st">"mcp-client-2025-11-20"</span>},</span>
+)
+<span class="cm"># Auth/credentials are passed via the request's auth — NOT baked into the URL above.</span>
+<span class="cm"># Tool failures surface with the MCP isError pattern (see card 6).</span></code></pre></div>
+
+    <div class="callout tip">
+      <div class="h">✅ What to remember</div>
+      <p>Remote MCP from the API = <code>mcp_servers=[{"type":"url", "name":..., "url":...}]</code> + the
+         <code>anthropic-beta: mcp-client-2025-11-20</code> header. The declaration names the server; secrets
+         ride along separately, not in the list.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">6</span>Errors &amp; least privilege</h2>
+    <ul class="clean">
+      <li><b>Errors use the <code>isError</code> pattern.</b> An MCP tool that fails returns a result flagged
+          <code>isError: true</code> with the message in its content — it doesn't throw out of band. The model
+          sees the failure as content and can recover or report it.</li>
+      <li><b>Scope every server to least privilege.</b> Grant only the access the role needs — a read-only
+          analytics server shouldn't carry write/delete scopes.</li>
+      <li><b>Too many tools degrades selection.</b> Flooding an agent with every MCP tool makes it pick worse.
+          <b>Scope each agent to the MCP tools its role actually needs.</b></li>
+    </ul>
+
+    <div class="codewrap solo"><pre><code><span class="cm"># MCP tool error — isError pattern (the failure is returned as content, not thrown)</span>
+{
+  <span class="hl"><span class="nm">"isError"</span>: <span class="kw">true</span>,</span>
+  <span class="nm">"content"</span>: [{ <span class="nm">"type"</span>: <span class="st">"text"</span>, <span class="nm">"text"</span>: <span class="st">"403: token lacks repo:write scope"</span> }]
+}</code></pre></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">7</span>How this shows up on the exam</h2>
+
+    <div class="callout key">
+      <div class="h">Scenario → answer</div>
+      <p><b>Scenario:</b> Your team keeps copying Jira tickets into chat by hand, and your agent burns many
+         tool calls just discovering what data exists before it can act. Two design questions: how do you
+         connect Jira, and how do you cut the exploratory calls?<br>
+         <b>Answer:</b> Connect Jira with the <b>existing community MCP server</b> (don't build a custom one —
+         it isn't proprietary). Cut the probing by exposing the available data as an MCP <b>resource catalog</b>
+         the model <b>reads once</b>, instead of forcing it to discover everything through repeated tool calls.</p>
+    </div>
+
+    <ul class="clean">
+      <li><b>Resources reduce exploratory tool calls.</b> Resource = readable content catalog (read once); tool = action. Probing via many tool calls → expose a resource instead.</li>
+      <li><b>Prefer community servers; custom only for team-specific/proprietary needs.</b> Don't build a Jira/GitHub/Slack server when a maintained one exists.</li>
+      <li><b><code>.mcp.json</code> (project, shared/version-controlled) vs <code>~/.claude.json</code> (user, personal).</b> Know which file a server belongs in. Exact schema is version-sensitive — verify in docs.</li>
+      <li><b><code>${ENV_VAR}</code> for secrets.</b> Never hardcode tokens in a committed config; inject from the environment.</li>
+      <li><b>API remote MCP:</b> <code>mcp_servers=[{type:"url",...}]</code> + beta header <code>mcp-client-2025-11-20</code>; credentials kept out of the declaration.</li>
+      <li><b>Scope servers to least privilege</b> and <b>scope each agent to the tools its role needs</b> — too many tools degrades selection. Errors use the <code>isError</code> pattern.</li>
+    </ul>
+
+    <div class="btnrow" style="margin-top:14px">
+      <a class="pill" href="index.html#d2">→ D2 module</a>
+      <a class="pill" href="index.html#flash">→ Flashcards</a>
+      <a class="pill" href="index.html#quiz">→ Quiz</a>
+      <a class="pill" href="subagents.html">→ Subagents &amp; the coordinator pattern</a>
+    </div>
+  </div>
+
+  <div class="footer">CCA Foundations · Domain 2 — Tools &amp; MCP · Model Context Protocol integration</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // --- Widget A: community vs custom -------------------------------------
+  var RECS = {
+    cJira: {
+      kind: "good",
+      out: "✅ Use the COMMUNITY MCP server. Jira is a standard integration — a maintained server already exists.",
+      narr: "Standard integration → community server. Building your own Jira server is the wrong answer."
+    },
+    cGithub: {
+      kind: "good",
+      out: "✅ Use the COMMUNITY / official MCP server. GitHub is standard — don't reinvent auth, the API, and the schema.",
+      narr: "Standard integration → community server. Reserve custom builds for proprietary systems."
+    },
+    cTeam: {
+      kind: "bad",
+      out: "🛠️ BUILD a custom MCP server. This system is team-specific/proprietary — no public server fits.",
+      narr: "Custom is justified ONLY here: a proprietary system with no community equivalent."
+    }
+  };
+  var ccChips = { cJira: byId("cJira"), cGithub: byId("cGithub"), cTeam: byId("cTeam") };
+  var ccOut = byId("ccOut");
+  var ccNarrate = byId("ccNarrate");
+
+  function setCC(key) {
+    Object.keys(ccChips).forEach(function (k) {
+      ccChips[k].classList.toggle("active", k === key);
+    });
+    var r = RECS[key];
+    ccOut.className = "out " + r.kind;
+    ccOut.textContent = r.out;
+    ccNarrate.textContent = r.narr;
+  }
+
+  // --- Widget B: which config file --------------------------------------
+  var sTeam = byId("sTeam");
+  var sPersonal = byId("sPersonal");
+  var scopeOut = byId("scopeOut");
+
+  function setScope(team) {
+    sTeam.classList.toggle("active", team);
+    sPersonal.classList.toggle("active", !team);
+    scopeOut.className = "out good";
+    scopeOut.textContent = team
+      ? ".mcp.json (project root) — checked into version control, shared with the team. Inject secrets via ${ENV_VAR}."
+      : "~/.claude.json (user scope) — personal, NOT committed, available across all your projects.";
+  }
+
+  // --- helpers / wiring --------------------------------------------------
+  function byId(id) { return document.getElementById(id); }
+
+  function clickKey(el, fn) {
+    el.addEventListener("click", fn);
+    el.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); }
+    });
+  }
+
+  Object.keys(ccChips).forEach(function (k) {
+    clickKey(ccChips[k], function () { setCC(k); });
+  });
+  clickKey(sTeam, function () { setScope(true); });
+  clickKey(sPersonal, function () { setScope(false); });
+
+  setCC("cJira");
+  setScope(true);
+})();
+</script>
+</body>
+</html>

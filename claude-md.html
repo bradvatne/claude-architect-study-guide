@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memory, rules, commands &amp; skills — where everything lives · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D3 · Claude Code · 20%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">CLAUDE.md hierarchy · rules · slash commands · skills</div>
+    <h1>Memory, rules, commands &amp; skills</h1>
+    <p>This domain is mostly a <b>placement test</b>: given a rule, a command, or a workflow, <b>which file does
+       it go in?</b> Four ideas carry most of the questions — user CLAUDE.md is <b>personal and NOT
+       version-controlled</b> (the classic "new teammate didn't get the team rules" bug), a
+       <code>.claude/rules/</code> file with a <code>paths:</code> glob <b>beats scattering per-directory
+       CLAUDE.md</b>, <b>project vs personal</b> command dirs, and a <b>skill</b> (on-demand,
+       <code>context: fork</code>) vs <b>CLAUDE.md</b> (always loaded).</p>
+  </div>
+
+  <div class="callout warn">
+    <div class="h">⚠️ Verify specifics against current Claude Code docs</div>
+    <p>frontmatter keys/paths are version-sensitive; the docs map is
+       <a href="https://docs.anthropic.com/en/docs/claude-code/claude_code_docs_map.md">https://docs.anthropic.com/en/docs/claude-code/claude_code_docs_map.md</a></p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>The memory hierarchy — and the teammate bug</h2>
+    <p class="lead">CLAUDE.md is <b>always loaded</b> into context at session start. Where you put it decides
+       <b>who gets it</b>. The exam keeps coming back to one distinction: <b>personal</b> (just you) vs
+       <b>shared</b> (the team, via version control).</p>
+
+    <table>
+      <thead><tr><th>Scope</th><th>Location</th><th>Shared?</th><th>Use for</th></tr></thead>
+      <tbody>
+        <tr class="row-pause"><td><b>User</b></td><td><code>~/.claude/CLAUDE.md</code></td><td><b>No</b> — personal, NOT in version control</td><td>Your own preferences across all projects.</td></tr>
+        <tr class="row-stop"><td><b>Project</b></td><td><code>./CLAUDE.md</code> or <code>./.claude/CLAUDE.md</code></td><td><b>Yes</b> — committed, shared with the team</td><td>Project conventions everyone should get.</td></tr>
+        <tr class="row-pause"><td><b>Directory</b></td><td><code>sub/dir/CLAUDE.md</code></td><td>Yes (if committed)</td><td>Rules just for one subtree; loads when Claude touches that dir.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout key">
+      <div class="h">🎯 The "new teammate didn't get the team rules" bug</div>
+      <p>You wrote the team's conventions into <b><code>~/.claude/CLAUDE.md</code></b>. It works for you — but
+         that file is <b>personal and never committed</b>, so a new teammate clones the repo and gets
+         <b>nothing</b>. The fix: shared rules go in the <b>project</b> CLAUDE.md (root or
+         <code>.claude/CLAUDE.md</code>), which travels with the repo. <b>Personal = user CLAUDE.md; shared =
+         project CLAUDE.md.</b></p>
+    </div>
+
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>Team rule in <code>~/.claude/CLAUDE.md</code></h4>
+        <p>Lives only on your machine. Not committed → teammates never receive it → they repeat the mistakes the
+           rule was supposed to prevent.</p>
+      </div>
+      <div class="compare good">
+        <h4>Team rule in project <code>CLAUDE.md</code></h4>
+        <p>Committed to the repo. Everyone who clones it gets the convention automatically, in every session.</p>
+      </div>
+    </div>
+
+    <h3>Keep it modular — <code>@import</code> and <code>.claude/rules/</code></h3>
+    <p>A growing CLAUDE.md hurts adherence. Pull topics out with <code>@import</code>, or split them into
+       <code>.claude/rules/</code> files (see card 2).</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># CLAUDE.md (project root, committed) — modular via @import</span>
+<span class="hl">@docs/git-instructions.md</span>   <span class="cm"># pulled in and loaded at launch</span>
+<span class="hl">@~/.claude/my-prefs.md</span>       <span class="cm"># import a personal file to share across worktrees</span>
+
+<span class="cm"># Backtick a path to MENTION it without importing: `@README` stays literal.</span></code></pre></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>Path-specific rules beat per-directory CLAUDE.md</h2>
+    <p class="lead">When a convention spans <b>many directories</b> but only applies to <b>one kind of file</b>
+       (say every <code>*.test.tsx</code>), don't scatter a CLAUDE.md into each folder. Put <b>one</b>
+       <code>.claude/rules/</code> file with a <code>paths:</code> glob — it loads <b>only</b> when Claude works
+       with files matching the glob.</p>
+
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>Scattering per-directory CLAUDE.md</h4>
+        <p>A CLAUDE.md in every folder that has tests. Duplicated, drifts out of sync, and each one is always
+           loaded whether or not you're touching tests.</p>
+      </div>
+      <div class="compare good">
+        <h4>One <code>.claude/rules/*.md</code> with <code>paths:</code></h4>
+        <p>Single file, one glob (<code>**/*.test.tsx</code>), loads <b>conditionally</b> only when a matching
+           file is in play. Less context noise, one place to maintain.</p>
+      </div>
+    </div>
+
+    <h3>(1) A path-scoped rule file</h3>
+    <p class="lead">Labeled: <b>frontmatter keys version-sensitive — verify</b> in the current docs.</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># .claude/rules/test-conventions.md</span>
+<span class="cm"># Frontmatter keys are VERSION-SENSITIVE — verify in the current docs.</span>
+<span class="hl">---</span>
+<span class="hl"><span class="nm">paths</span>:</span>
+<span class="hl">  - <span class="st">"**/*.test.tsx"</span></span>      <span class="cm"># glob; rule loads ONLY when editing matching files</span>
+<span class="hl">---</span>
+
+<span class="cm"># React test conventions</span>
+- Use Testing Library queries, never <span class="fn">container.querySelector</span>.
+- One <span class="kw">describe</span> block per component; co-locate the test next to the component.
+- Mock network calls with the shared <span class="fn">server</span> handler, not per-test fetch stubs.</code></pre></div>
+
+    <div class="callout note">
+      <div class="h">ℹ️ How loading differs</div>
+      <p>A rule <b>without</b> <code>paths:</code> loads at launch, same priority as <code>.claude/CLAUDE.md</code>.
+         A rule <b>with</b> <code>paths:</code> is conditional — it enters context only when Claude reads a file
+         matching the glob. Globs support <code>**</code>, directory prefixes, and brace expansion like
+         <code>"src/**/*.{ts,tsx}"</code>.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>Slash commands — project (shared) vs personal</h2>
+    <p class="lead">A slash command is a reusable prompt you trigger with <code>/name</code>. Same personal-vs-shared
+       split as CLAUDE.md, just a different directory.</p>
+
+    <table>
+      <thead><tr><th>Where</th><th>Directory</th><th>Shared?</th></tr></thead>
+      <tbody>
+        <tr class="row-stop"><td><b>Project</b></td><td><code>.claude/commands/</code></td><td><b>Yes</b> — committed; the whole team gets it</td></tr>
+        <tr class="row-pause"><td><b>Personal</b></td><td><code>~/.claude/commands/</code></td><td><b>No</b> — just you, across all projects</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout key">
+      <div class="h">🎯 A team <code>/review</code> everyone should get → project dir</div>
+      <p>If the whole team should be able to run <code>/review</code>, the file goes in the <b>project</b>
+         <code>.claude/commands/</code> directory so it's version-controlled and shipped to every clone. Your
+         personal aliases go in <b><code>~/.claude/commands/</code></b>.</p>
+    </div>
+
+    <div class="callout note">
+      <div class="h">ℹ️ Current-docs nuance: commands are now skills</div>
+      <p>In current Claude Code, <b>custom commands have been merged into skills</b> — a file at
+         <code>.claude/commands/deploy.md</code> and a skill at <code>.claude/skills/deploy/SKILL.md</code> both
+         create <code>/deploy</code> and behave the same way; existing <code>commands/</code> files keep working.
+         The <b>project-vs-personal directory split is unchanged</b>, which is what the exam tests. (Skills add
+         extra powers — see card 4.)</p>
+    </div>
+
+    <div class="callout warn">
+      <div class="h">⚠️ Distractor: there is no <code>.claude/config.json</code> "commands" array</div>
+      <p>Commands are <b>files in a directory</b> (<code>.claude/commands/</code> or
+         <code>~/.claude/commands/</code>), not entries registered in some
+         <code>.claude/config.json</code> <code>"commands"</code> array. If an answer choice points at such a
+         JSON array, it's the wrong one.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>Skills — loaded ON-DEMAND, optionally forked</h2>
+    <p class="lead">A skill is a <code>SKILL.md</code> in <code>.claude/skills/</code>. The crucial contrast:
+       only the skill's <b>short description</b> sits in context until it's needed; the <b>body loads
+       on-demand</b>. CLAUDE.md, by contrast, is <b>always fully loaded</b>.</p>
+
+    <table>
+      <thead><tr><th></th><th>CLAUDE.md / rules (no <code>paths</code>)</th><th>Skill (<code>.claude/skills/</code>)</th></tr></thead>
+      <tbody>
+        <tr class="row-stop"><td><b>When loaded</b></td><td><b>Always</b> — full content, every session</td><td><b>On-demand</b> — only the description until invoked/relevant</td></tr>
+        <tr class="row-pause"><td><b>Best for</b></td><td>Always-on facts &amp; conventions</td><td>Occasional / verbose multi-step workflows</td></tr>
+        <tr class="row-stop"><td><b>Context cost</b></td><td>Pays tokens every session</td><td>≈ free until used</td></tr>
+      </tbody>
+    </table>
+
+    <h3>(2) A SKILL.md frontmatter example</h3>
+    <p class="lead">Labeled: <b>frontmatter keys version-sensitive — verify</b> in the current docs.</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># .claude/skills/deploy/SKILL.md</span>
+<span class="cm"># Frontmatter keys are VERSION-SENSITIVE — verify in the current docs.</span>
+<span class="hl">---</span>
+<span class="hl"><span class="nm">name</span>: deploy</span>
+<span class="hl"><span class="nm">description</span>: <span class="st">Deploy the app to production. Use when the user asks to ship or release.</span></span>
+<span class="hl"><span class="nm">context</span>: fork</span>            <span class="cm"># run in a forked subagent so verbose output stays out of the main thread</span>
+<span class="hl"><span class="nm">allowed-tools</span>: Bash Read</span>  <span class="cm"># tools usable without a permission prompt while active</span>
+<span class="hl"><span class="nm">argument-hint</span>: <span class="st">[env]</span></span>     <span class="cm"># autocomplete hint for expected args</span>
+<span class="hl">---</span>
+
+<span class="cm"># Deploy runbook</span>
+1. Verify the working tree is clean and on <span class="kw">main</span>.
+2. Build the artifact and run smoke tests.
+3. Promote and confirm the health check is green.</code></pre></div>
+
+    <div class="callout key">
+      <div class="h">🔑 <code>context: fork</code> = isolated/forked subagent context</div>
+      <p>Set <code>context: fork</code> so the skill runs in a <b>forked subagent context</b>, keeping its
+         verbose output out of the main conversation. <b>Use a skill</b> for occasional or noisy workflows;
+         <b>use CLAUDE.md</b> for always-on rules. Verified frontmatter keys include <code>name</code>,
+         <code>description</code>, <code>allowed-tools</code>, <code>argument-hint</code>, and
+         <code>context</code> — but treat exact keys as version-sensitive.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>(3) Where everything lives</h2>
+    <p class="lead">One tree. Note which paths are <b>personal</b> (<code>~/.claude/…</code>, never committed)
+       vs <b>project</b> (in the repo, shared).</p>
+
+    <div class="codewrap solo"><pre><code><span class="cm"># PERSONAL — your machine only, NOT version-controlled</span>
+~/.claude/
+├── <span class="hl">CLAUDE.md</span>            <span class="cm"># your prefs across all projects (the teammate-bug trap)</span>
+└── commands/
+    └── <span class="hl">scratch.md</span>       <span class="cm"># your personal /scratch alias</span>
+
+<span class="cm"># PROJECT — in the repo, shared with the team via version control</span>
+your-project/
+├── <span class="hl">CLAUDE.md</span>            <span class="cm"># always-on shared conventions (or ./.claude/CLAUDE.md)</span>
+└── .claude/
+    ├── CLAUDE.md        <span class="cm"># alternative project-instructions location</span>
+    ├── rules/
+    │   └── <span class="hl">test-conventions.md</span>   <span class="cm"># paths: glob → loads ONLY for matching files</span>
+    ├── commands/
+    │   └── <span class="hl">review.md</span>            <span class="cm"># team /review — everyone gets it</span>
+    └── skills/
+        └── deploy/
+            └── <span class="hl">SKILL.md</span>         <span class="cm"># on-demand workflow; context: fork</span></code></pre></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">6</span>Where does this go? — decision drill</h2>
+    <p class="lead">Pick a scenario; the panel shows the <b>right home</b> and the one-line reason. This is exactly
+       the shape the exam questions take.</p>
+
+    <div class="demo">
+      <h4>Click a scenario</h4>
+      <div class="btnrow">
+        <span class="chip active" id="qTest"   role="button" tabindex="0">Rule for all **/*.test.tsx across many dirs</span>
+        <span class="chip"        id="qReview" role="button" tabindex="0">A team /review command everyone should get</span>
+        <span class="chip"        id="qAlias"  role="button" tabindex="0">Your personal aliases</span>
+        <span class="chip"        id="qConv"   role="button" tabindex="0">An always-on project convention</span>
+        <span class="chip"        id="qWork"   role="button" tabindex="0">An occasional verbose workflow</span>
+        <span class="chip"        id="qTeam"   role="button" tabindex="0">Shared rules a new teammate must get</span>
+      </div>
+      <div class="out" id="qOut"></div>
+      <div class="narrate" id="qNarr"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">7</span>How this shows up on the exam</h2>
+
+    <div class="callout key">
+      <div class="h">Scenario → answer</div>
+      <p><b>Scenario:</b> Your team's conventions live in <b>your</b> <code>~/.claude/CLAUDE.md</code>, and a new
+         hire keeps breaking a convention that spans every test file across dozens of directories. What do you
+         change?<br>
+         <b>Answer:</b> The conventions aren't reaching teammates because user CLAUDE.md is <b>personal and not
+         version-controlled</b> — move the shared rules into the <b>project</b> CLAUDE.md (committed). For the
+         test-file convention, add a single <code>.claude/rules/*.md</code> with a
+         <code>paths: ["**/*.test.tsx"]</code> glob instead of scattering per-directory CLAUDE.md files — it
+         loads only when matching files are touched.</p>
+    </div>
+
+    <ul class="clean">
+      <li><b>User CLAUDE.md (<code>~/.claude/CLAUDE.md</code>) is NOT version-controlled.</b> Shared rules → project CLAUDE.md (root or <code>.claude/CLAUDE.md</code>). That's the "new teammate didn't get the rules" bug.</li>
+      <li><b>Path-specific <code>.claude/rules/</code> with <code>paths:</code> beats per-directory CLAUDE.md</b> for a convention that spans many dirs but one file type. Loads conditionally on glob match.</li>
+      <li><b>Slash commands: project <code>.claude/commands/</code> (shared) vs personal <code>~/.claude/commands/</code>.</b> A team <code>/review</code> goes in the project dir.</li>
+      <li><b>Skill (on-demand, <code>context: fork</code>) vs CLAUDE.md (always loaded).</b> Skill body loads only when invoked/relevant; use it for occasional/verbose workflows, CLAUDE.md for always-on rules.</li>
+      <li><b>Distractor:</b> there is <b>no</b> <code>.claude/config.json</code> "commands" array — commands are files in a directory.</li>
+      <li><b>CLAUDE.md is always loaded in full</b> — keep it lean; modularize with <code>@import</code> and <code>.claude/rules/</code>. Exact frontmatter keys/paths are version-sensitive — verify in the docs.</li>
+    </ul>
+
+    <div class="btnrow" style="margin-top:14px">
+      <a class="pill" href="index.html#d3">→ D3 module</a>
+      <a class="pill" href="index.html#flash">→ Flashcards</a>
+      <a class="pill" href="index.html#quiz">→ Quiz</a>
+    </div>
+  </div>
+
+  <div class="footer">CCA Foundations · Domain 3 — Claude Code · Memory, rules, commands &amp; skills</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  function byId(id) { return document.getElementById(id); }
+
+  var ANSWERS = {
+    qTest: {
+      kind: "good",
+      out: ".claude/rules/*.md with paths: [\"**/*.test.tsx\"] frontmatter",
+      narr: "One path-scoped rule loads only when matching files are touched — beats scattering per-directory CLAUDE.md."
+    },
+    qReview: {
+      kind: "good",
+      out: ".claude/commands/review.md  (PROJECT — committed)",
+      narr: "Project commands dir is version-controlled, so everyone on the team gets /review."
+    },
+    qAlias: {
+      kind: "good",
+      out: "~/.claude/commands/  (PERSONAL — not committed)",
+      narr: "Personal aliases live in your user commands dir; they aren't shared with the team."
+    },
+    qConv: {
+      kind: "good",
+      out: "Project CLAUDE.md  (./CLAUDE.md or ./.claude/CLAUDE.md)",
+      narr: "Always-on shared convention → project CLAUDE.md, which is always loaded and version-controlled."
+    },
+    qWork: {
+      kind: "good",
+      out: ".claude/skills/<name>/SKILL.md  (on-demand; add context: fork)",
+      narr: "Occasional/verbose workflow → a skill: body loads on-demand, and context: fork keeps noise out of the main thread."
+    },
+    qTeam: {
+      kind: "good",
+      out: "Project CLAUDE.md  (NOT ~/.claude/CLAUDE.md)",
+      narr: "User CLAUDE.md is personal and not version-controlled — the teammate bug. Shared rules go in the project file."
+    }
+  };
+
+  var chips = {
+    qTest:   byId("qTest"),
+    qReview: byId("qReview"),
+    qAlias:  byId("qAlias"),
+    qConv:   byId("qConv"),
+    qWork:   byId("qWork"),
+    qTeam:   byId("qTeam")
+  };
+  var out = byId("qOut");
+  var narr = byId("qNarr");
+
+  function pick(key) {
+    Object.keys(chips).forEach(function (k) {
+      chips[k].classList.toggle("active", k === key);
+    });
+    var a = ANSWERS[key];
+    out.className = "out " + a.kind;
+    out.textContent = "→ " + a.out;
+    narr.textContent = a.narr;
+  }
+
+  function clickKey(el, fn) {
+    el.addEventListener("click", fn);
+    el.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); }
+    });
+  }
+
+  Object.keys(chips).forEach(function (k) {
+    clickKey(chips[k], function () { pick(k); });
+  });
+
+  pick("qTest");
+})();
+</script>
+</body>
+</html>

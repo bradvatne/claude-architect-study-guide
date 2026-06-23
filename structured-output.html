@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Structured output &amp; schema-valid extraction · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D4 · Prompting &amp; Structured Output · 20%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">Domain 4 · Prompting &amp; Structured Output</div>
+    <h1>Structured output: schemas guarantee syntax, never semantics</h1>
+    <p>The single most-tested distinction in this domain: <code>tool_use</code> + a JSON schema (or <code>output_config.format</code>) is the reliable path to <em>syntactically</em> valid output — it eliminates malformed JSON and wrong types. It does <b>not</b> verify that the values are <em>correct</em>. Line items that don't sum to the total, a mis-read date, a fabricated email — the schema waves all of those through. This page drills that line, plus the two design moves that actually fix the failures schemas can't: <b>nullable/optional fields</b> and <b>retry-with-error-feedback</b>.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">ℹ️ Verified against the Claude API reference</div>
+    <p>Use <code>client.messages.parse()</code> with a Pydantic model (Python) or <code>zodOutputFormat</code> (TS) for auto-validated <code>parsed_output</code>; the raw form is <code>output_config={"format":{"type":"json_schema","schema":{…,"additionalProperties":false}}}</code> on <code>messages.create()</code>. Default model <code>claude-opus-4-8</code>, <code>max_tokens</code> 16000.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>Schema-valid ≠ correct: the syntax/semantics split</h2>
+    <p class="lead">A schema is a <em>shape</em> contract. It enforces that <code>total</code> is a number and <code>line_items</code> is an array of objects with the right keys. It says nothing about whether the numbers add up.</p>
+    <div class="grid2">
+      <div class="compare good">
+        <h4>✓ What the schema GUARANTEES (syntax)</h4>
+        <p>Output is parseable JSON. Every field has the declared type. No missing required keys, no extra keys (<code>additionalProperties:false</code>), enum values are from the allowed set. Your <code>json.loads()</code> / <code>JSON.parse()</code> never throws.</p>
+      </div>
+      <div class="compare bad">
+        <h4>✗ What it does NOT catch (semantics)</h4>
+        <p>40 + 30 ≠ 100. A date read off the wrong line. An invoice number transposed. An email that <em>looks</em> valid but wasn't in the source. These are all schema-VALID and still wrong — the model can hand you well-typed garbage.</p>
+      </div>
+    </div>
+    <div class="callout key">
+      <div class="h">🎯 The one fact to memorize</div>
+      <p><code>tool_use</code> + schema kills <b>SYNTAX</b> errors, not <b>SEMANTIC</b> ones. If a question describes output that parses fine but contains a wrong/inconsistent value, the schema is <em>not</em> the fix — you need post-hoc validation, a nullable field, or a retry.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>The canonical API surface</h2>
+    <p class="lead">Two equivalent ways to constrain the response format. The recommended path is <code>messages.parse()</code> — you hand it a typed model and get back validated <code>parsed_output</code>; the SDK builds the schema and validates for you.</p>
+    <div class="tabs" id="tabs">
+      <button data-lang="py" class="active">Python</button>
+      <button data-lang="ts">TypeScript</button>
+    </div>
+    <div class="codewrap"><pre id="codeblock"></pre></div>
+    <h3>Or the raw schema form (with an enum + "other" escape hatch)</h3>
+    <p>Drop to <code>output_config.format</code> when you want the schema by hand. Note the <b>enum with an <code>"other"</code> value plus a detail field</b> — that keeps the schema closed (<code>additionalProperties:false</code>) while still letting the model report values you didn't anticipate, instead of being forced to pick a wrong enum member.</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># Raw json_schema form — full control, no SDK model</span>
+response = client.messages.create(
+    model=<span class="st">"claude-opus-4-8"</span>,
+    max_tokens=<span class="nm">16000</span>,
+    messages=[{<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: source_text}],
+    output_config={
+        <span class="st">"format"</span>: {
+            <span class="st">"type"</span>: <span class="st">"json_schema"</span>,
+            <span class="st">"schema"</span>: {
+                <span class="st">"type"</span>: <span class="st">"object"</span>,
+                <span class="st">"properties"</span>: {
+                    <span class="st">"company"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>},
+                    <span class="cm"># enum + "other" → extensible without leaving the closed schema</span>
+                    <span class="st">"plan"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>, <span class="st">"enum"</span>: [<span class="st">"free"</span>, <span class="st">"pro"</span>, <span class="st">"enterprise"</span>, <span class="hl"><span class="st">"other"</span></span>]},
+                    <span class="cm"># detail field carries the real value when plan == "other"</span>
+                    <span class="st">"plan_detail"</span>: {<span class="st">"type"</span>: [<span class="st">"string"</span>, <span class="st">"null"</span>]}
+                },
+                <span class="st">"required"</span>: [<span class="st">"company"</span>, <span class="st">"plan"</span>, <span class="st">"plan_detail"</span>],
+                <span class="hl"><span class="st">"additionalProperties"</span>: <span class="kw">False</span></span>   <span class="cm"># required on every object</span>
+            }
+        }
+    }
+)
+<span class="cm"># output_config.format guarantees the first block is text with valid JSON</span>
+data = json.loads(<span class="kw">next</span>(b.text <span class="kw">for</span> b <span class="kw">in</span> response.content <span class="kw">if</span> b.type == <span class="st">"text"</span>))</code></pre></div>
+    <div class="callout tip">
+      <div class="h">✅ Strict tool use is the same idea on a tool</div>
+      <p>For function-calling, set <code>"strict": true</code> + <code>"additionalProperties": false</code> on the tool's <code>input_schema</code>. Same guarantee — the tool's arguments are syntactically schema-valid.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>Nullable / optional fields stop fabrication</h2>
+    <p class="lead">If a field is <b>required</b> and the data isn't in the source, the model can't return nothing — so it does the worst thing: it invents a plausible value. Making the field <b>nullable/optional</b> gives it a legal way to say "not present" → it returns <code>null</code> instead of a fake.</p>
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>✗ email required</h4>
+        <p>Source has no email. The schema forces a string. The model fabricates <code>jane@example.com</code> — schema-valid, completely made up.</p>
+      </div>
+      <div class="compare good">
+        <h4>✓ email nullable</h4>
+        <p><code>Optional[str]</code> / <code>.nullable()</code>. The model returns <code>null</code> for the missing field. No fabrication, and your code can branch on the null.</p>
+      </div>
+    </div>
+    <p>Same logic underlies the <b>enum + "other"</b> pattern from card 2: give the model a truthful option so it never has to guess. Required-everything schemas are a fabrication trap.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>Retry-with-error-feedback fixes format, not absence</h2>
+    <p class="lead">When validation fails, feed the validation error back to the model and ask it to fix the output. This reliably repairs <b>structural / format</b> problems — but you cannot retry your way to data that isn't there.</p>
+    <table>
+      <thead><tr><th>Failure</th><th>Retry-with-feedback?</th><th>The actual fix</th></tr></thead>
+      <tbody>
+        <tr class="row-stop"><td>Malformed JSON / wrong type / missing key</td><td>✅ Works — model corrects the shape</td><td>Schema (prevents it) or retry (repairs it)</td></tr>
+        <tr class="row-bad"><td>Info simply absent from the source</td><td>❌ Useless — there's nothing to recover</td><td><b>Nullable field</b> → model returns <code>null</code></td></tr>
+        <tr class="row-bad"><td>Wrong-but-well-typed value (40+30≠100)</td><td>❌ Schema/retry won't catch it</td><td>Post-hoc semantic check in your code</td></tr>
+      </tbody>
+    </table>
+    <div class="callout warn">
+      <div class="h">⚠️ Edge cases that still break the schema</div>
+      <p>Structured outputs are <b>incompatible with citations</b>. And a <b>refusal</b> (<code>stop_reason: "refusal"</code>) or hitting <b>max_tokens</b> can still produce output that doesn't match the schema — always check <code>stop_reason</code> before trusting the shape. Also: numeric/string-length constraints (<code>minimum</code>, <code>maxLength</code>) are <em>not</em> enforced server-side; the SDKs validate those client-side. Enum / <code>const</code> / <code>anyOf</code> / <code>$ref</code> are supported.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>Try it: syntax vs. semantics on one invoice</h2>
+    <p class="lead">Here's an extracted invoice that is fully schema-valid — it parses, every type is right, no missing keys. But the line items (40 + 30) don't equal the stated total (100). Run each check and watch what the schema can and can't see.</p>
+    <div class="demo">
+      <h4>Extracted invoice JSON (schema-valid)</h4>
+      <div class="codewrap solo"><pre><code id="invoice"></code></pre></div>
+      <div class="btnrow">
+        <button class="btn" id="btn-schema">Validate schema</button>
+        <button class="btn" id="btn-sem">Check semantics</button>
+      </div>
+      <div class="out" id="demo-out">Run a check above. The schema check looks at <em>shape</em>; the semantics check looks at whether the numbers are <em>true</em>.</div>
+    </div>
+
+    <h3>Required → nullable, on the <code>email</code> field</h3>
+    <p>The source invoice has no email address. Toggle how the <code>email</code> field is declared and see what the model returns.</p>
+    <div class="demo">
+      <div class="btnrow">
+        <span class="toggle">email field:</span>
+        <button class="chip active" id="chip-req">required</button>
+        <button class="chip" id="chip-null">nullable</button>
+      </div>
+      <div class="out" id="null-out"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">6</span>How this shows up on the exam</h2>
+    <div class="callout key">
+      <div class="h">🎯 Scenario → answer</div>
+      <p><b>Scenario:</b> "An extraction pipeline uses <code>tool_use</code> with a strict JSON schema, yet invoices still come back where the line items don't sum to the total. What fixes this?" <b>Answer:</b> The schema can't — it only guarantees syntax. Add a <b>post-hoc semantic validation step</b> in your code. (And if the trap answer is "tighten the schema" or "retry with the error," neither catches a wrong-but-well-typed value.)</p>
+    </div>
+    <ul class="clean">
+      <li><b>tool_use + schema kills SYNTAX errors, not SEMANTIC ones</b> — malformed JSON / wrong types go away; arithmetic, mis-reads, and inconsistencies do not.</li>
+      <li><b>Nullable/optional fields prevent fabrication</b> — a required field forces the model to invent a value when the data is absent; nullable lets it return <code>null</code>.</li>
+      <li><b>Enums with an "other" value (+ a detail field)</b> keep a closed schema extensible without forcing a wrong choice.</li>
+      <li><b>Retry-with-error-feedback fixes format, not missing info</b> — you can't retry your way to data that isn't in the source; that's what nullable fields are for.</li>
+      <li><b>Refusal / max_tokens / citations</b> can each leave you with output that doesn't match the schema — check <code>stop_reason</code> first.</li>
+    </ul>
+    <div class="btnrow">
+      <a class="pill" href="index.html#d4">← Domain 4 overview</a>
+      <a class="pill" href="index.html#flash">Flashcards</a>
+      <a class="pill" href="index.html#quiz">Practice quiz</a>
+    </div>
+  </div>
+
+  <div class="footer">CCA Foundations study guide · Domain 4 · Prompting &amp; Structured Output · Verified against the Claude API reference · default model claude-opus-4-8</div>
+</div>
+
+<script>
+  // ----- language tabs (card 2 main example) -----
+  var CODE = {
+    py: '<span class="cm"># Recommended: messages.parse() with a Pydantic model → validated parsed_output</span>\n' +
+        '<span class="kw">from</span> pydantic <span class="kw">import</span> BaseModel\n' +
+        '<span class="kw">from</span> typing <span class="kw">import</span> Optional\n' +
+        '<span class="kw">import</span> anthropic\n\n' +
+        '<span class="kw">class</span> <span class="fn">ContactInfo</span>(BaseModel):\n' +
+        '    name: <span class="kw">str</span>\n' +
+        '    company: <span class="kw">str</span>\n' +
+        '    <span class="cm"># nullable: model returns None, never a fabricated address</span>\n' +
+        '    <span class="hl">email: Optional[<span class="kw">str</span>] = <span class="kw">None</span></span>\n\n' +
+        'client = anthropic.Anthropic()\n\n' +
+        'response = client.messages.<span class="fn">parse</span>(\n' +
+        '    model=<span class="st">"claude-opus-4-8"</span>,\n' +
+        '    max_tokens=<span class="nm">16000</span>,\n' +
+        '    messages=[{<span class="st">"role"</span>: <span class="st">"user"</span>,\n' +
+        '               <span class="st">"content"</span>: <span class="st">"Extract contact info: Jane Doe at Acme Corp."</span>}],\n' +
+        '    <span class="hl">output_format=ContactInfo</span>,   <span class="cm"># SDK builds + validates the schema</span>\n' +
+        ')\n\n' +
+        'contact = response.parsed_output   <span class="cm"># validated ContactInfo instance</span>\n' +
+        '<span class="kw">print</span>(contact.email)   <span class="cm"># None — schema GUARANTEES syntax, not that an email existed</span>',
+    ts: '<span class="cm">// Recommended: messages.parse() with a Zod schema → validated parsed_output</span>\n' +
+        '<span class="kw">import</span> Anthropic <span class="kw">from</span> <span class="st">"@anthropic-ai/sdk"</span>;\n' +
+        '<span class="kw">import</span> { z } <span class="kw">from</span> <span class="st">"zod"</span>;\n' +
+        '<span class="kw">import</span> { zodOutputFormat } <span class="kw">from</span> <span class="st">"@anthropic-ai/sdk/helpers/zod"</span>;\n\n' +
+        '<span class="kw">const</span> ContactInfoSchema = z.<span class="fn">object</span>({\n' +
+        '  name: z.<span class="fn">string</span>(),\n' +
+        '  company: z.<span class="fn">string</span>(),\n' +
+        '  <span class="cm">// nullable: model returns null, never a fabricated address</span>\n' +
+        '  <span class="hl">email: z.<span class="fn">string</span>().<span class="fn">nullable</span>()</span>,\n' +
+        '});\n\n' +
+        '<span class="kw">const</span> client = <span class="kw">new</span> <span class="fn">Anthropic</span>();\n\n' +
+        '<span class="kw">const</span> response = <span class="kw">await</span> client.messages.<span class="fn">parse</span>({\n' +
+        '  model: <span class="st">"claude-opus-4-8"</span>,\n' +
+        '  max_tokens: <span class="nm">16000</span>,\n' +
+        '  messages: [{ role: <span class="st">"user"</span>,\n' +
+        '               content: <span class="st">"Extract contact info: Jane Doe at Acme Corp."</span> }],\n' +
+        '  <span class="hl">output_config: { format: <span class="fn">zodOutputFormat</span>(ContactInfoSchema) }</span>,\n' +
+        '});\n\n' +
+        '<span class="cm">// parsed_output is null if parsing failed — assert or guard</span>\n' +
+        'console.<span class="fn">log</span>(response.parsed_output!.email);   <span class="cm">// null — syntax guaranteed, presence is not</span>'
+  };
+  var cb = document.getElementById('codeblock');
+  function setLang(l) {
+    cb.innerHTML = '<code>' + CODE[l] + '</code>';
+    document.querySelectorAll('#tabs button').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.lang === l);
+    });
+  }
+  document.querySelectorAll('#tabs button').forEach(function (b) {
+    b.onclick = function () { setLang(b.dataset.lang); };
+  });
+  setLang('py');
+
+  // ----- syntax vs semantics demo -----
+  var invoiceJSON =
+    '{\n' +
+    '  "invoice_id": "INV-2026-0042",\n' +
+    '  "line_items": [\n' +
+    '    { "desc": "Design",   "amount": 40 },\n' +
+    '    { "desc": "Hosting",  "amount": 30 }\n' +
+    '  ],\n' +
+    '  "total": 100\n' +
+    '}';
+  document.getElementById('invoice').textContent = invoiceJSON;
+
+  var demoOut = document.getElementById('demo-out');
+  document.getElementById('btn-schema').onclick = function () {
+    demoOut.className = 'out good';
+    demoOut.textContent = '✓ valid JSON, matches schema — all types correct, no missing keys, total is a number. The schema is satisfied.';
+  };
+  document.getElementById('btn-sem').onclick = function () {
+    demoOut.className = 'out bad';
+    demoOut.textContent = '✗ 40 + 30 ≠ 100 — the line items don’t sum to the total. Schema-valid but semantically wrong; the schema cannot catch this. Fix it with a post-hoc check in your code.';
+  };
+
+  // ----- required vs nullable toggle -----
+  var chipReq = document.getElementById('chip-req');
+  var chipNull = document.getElementById('chip-null');
+  var nullOut = document.getElementById('null-out');
+  function setEmailMode(m) {
+    chipReq.className = 'chip' + (m === 'req' ? ' active' : '');
+    chipNull.className = 'chip' + (m === 'null' ? ' active' : '');
+    if (m === 'req') {
+      nullOut.className = 'out bad';
+      nullOut.innerHTML = 'email is <b>required</b> → the source has none, so the model FABRICATES a plausible value: <code>"email": "jane@example.com"</code>. Schema-valid, entirely invented.';
+    } else {
+      nullOut.className = 'out good';
+      nullOut.innerHTML = 'email is <b>nullable</b> → the model has a legal way to report absence and returns <code>"email": null</code>. No fabrication; your code can branch on the null.';
+    }
+  }
+  chipReq.onclick = function () { setEmailMode('req'); };
+  chipNull.onclick = function () { setEmailMode('null'); };
+  setEmailMode('req');
+</script>
+</body>
+</html>

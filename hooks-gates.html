@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deterministic enforcement — hooks &amp; gates vs. prompt guidance · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D1 · Orchestration · 27%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">Domain 1 · Agent Orchestration</div>
+    <h1>Deterministic enforcement: hooks &amp; prerequisite gates vs. prompt guidance</h1>
+    <p>The single most-tested orchestration principle: when a business rule <em>must always hold</em>, enforce it with deterministic code — a gate in your tool-execution loop or a harness hook — not with a firmer prompt or more examples. Prompts shape probabilities; gates set guarantees.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">ℹ️ Verified against the Claude API / Agent SDK reference</div>
+    <p>The manual-loop gate below matches the documented pattern: check the invariant before executing the tool Claude requested, and on failure return a <code>tool_result</code> with <code>is_error: true</code> instead of running it. Default model <code>claude-opus-4-8</code>. Exact Claude Code hook event names / settings.json schema are version-sensitive — verify in current docs.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>The core principle</h2>
+    <p class="lead">Decide enforcement by the <b>kind</b> of behavior you need, not by how important it feels.</p>
+    <div class="grid2">
+      <div class="compare good">
+        <h4>Must-hold invariant → deterministic gate</h4>
+        <p>"Verify the customer before issuing a refund." "Never refund above $500." "Block the deploy unless tests pass." These have a hard right/wrong answer that must hold <em>every single time</em>. Enforce in code — the gate has a <b>zero</b> failure rate.</p>
+      </div>
+      <div class="compare bad">
+        <h4>Preference / probabilistic → prompt guidance</h4>
+        <p>"Prefer a warm, concise tone." "Lean toward the cheaper option when they're close." "Ask clarifying questions when ambiguous." These are judgment calls. Prompt guidance is the right tool — and it's fine that it's followed <em>most</em> of the time.</p>
+      </div>
+    </div>
+    <div class="callout key">
+      <div class="h">🎯 The one-liner to memorize</div>
+      <p>Prompt-based compliance has a <b>non-zero failure rate</b>. A programmatic gate has a <b>zero failure rate</b>. So a rule that <em>must</em> always hold belongs in code, never in the prompt.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>Why "improve the prompt" is the wrong answer</h2>
+    <p>The model is a probabilistic system. Even a perfectly worded system prompt with flawless few-shot examples will, across enough calls, eventually produce the action you told it never to take. For a hard invariant, "usually" is failure.</p>
+    <ul class="clean">
+      <li><b>System prompt instructions</b> raise the probability of compliance. They don't make non-compliance impossible.</li>
+      <li><b>Few-shot examples</b> teach a pattern. The model can still deviate on an out-of-distribution input.</li>
+      <li><b>Self-rated confidence</b> ("rate your confidence before acting") is still model output — it can be confidently wrong, and it gates nothing.</li>
+    </ul>
+    <div class="callout warn">
+      <div class="h">⚠️ Exam distractors — reject all of these for a must-hold rule</div>
+      <p>"Make the system prompt firmer." · "Add few-shot examples of the correct behavior." · "Have the model rate its confidence before acting." None of these are <b>deterministic</b>; each still relies on the model choosing correctly. The right answer is always a programmatic gate or hook.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>Two surfaces where you enforce deterministically</h2>
+
+    <h3>(a) A gate in your own tool-execution code (most portable)</h3>
+    <p>In a manual agentic loop, <em>you</em> decide what happens when Claude requests a tool. Before you actually execute the requested action, your harness checks the invariant. If it fails, you don't run the tool — you append a <code>tool_result</code> with <code>"is_error": true</code> explaining the violation, and Claude adapts on the next turn. This works with the raw Claude API and needs no special harness.</p>
+
+    <h3>(b) Hooks — harness-executed code on tool events</h3>
+    <p>A hook is code the harness runs automatically when a tool event fires, and it can allow or deny the call:</p>
+    <ul class="clean">
+      <li><b>Claude Code hooks</b> — configured in <code>settings.json</code>. A <code>PreToolUse</code> hook runs before a tool executes and can block it.</li>
+      <li><b>Agent SDK hooks</b> — e.g. a <code>PostToolUse</code> hook that fires after a tool runs.</li>
+    </ul>
+    <div class="callout tip">
+      <div class="h">✅ When the exam doesn't name a harness</div>
+      <p>The gate-in-your-loop approach (a) is the most portable answer — it works against the raw API with no Claude Code or Agent SDK dependency. Reach for hooks (b) when the scenario explicitly involves Claude Code or the Agent SDK.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>The manual-loop gate (Python)</h2>
+    <p class="lead">Inside the tool-execution branch, the invariant — <code>customer_verified</code> and <code>amount &lt;= 500</code> — is checked <em>before</em> the refund runs. On failure we never call <code>process_refund</code>; we hand Claude an error result and let it adapt.</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># Manual agentic loop with a deterministic refund gate.</span>
+<span class="kw">import</span> anthropic, json
+
+client = anthropic.Anthropic()
+MODEL  = <span class="st">"claude-opus-4-8"</span>
+REFUND_LIMIT = <span class="nm">500</span>
+
+tools = [{
+    <span class="st">"name"</span>: <span class="st">"issue_refund"</span>,
+    <span class="st">"description"</span>: <span class="st">"Refund a customer for an order."</span>,
+    <span class="st">"input_schema"</span>: {
+        <span class="st">"type"</span>: <span class="st">"object"</span>,
+        <span class="st">"properties"</span>: {
+            <span class="st">"order_id"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>},
+            <span class="st">"amount"</span>:   {<span class="st">"type"</span>: <span class="st">"number"</span>},
+        },
+        <span class="st">"required"</span>: [<span class="st">"order_id"</span>, <span class="st">"amount"</span>],
+    },
+}]
+
+<span class="kw">def</span> <span class="fn">gate_and_run_refund</span>(args, *, customer_verified):
+    <span class="cm"># The deterministic invariant. No model judgment involved.</span>
+    amount = args[<span class="st">"amount"</span>]
+<span class="hl">    <span class="kw">if</span> <span class="kw">not</span> customer_verified:</span>
+<span class="hl">        <span class="kw">return</span> (<span class="nm">True</span>, <span class="st">"BLOCKED: customer identity not verified. "</span></span>
+<span class="hl">                      <span class="st">"Verify the customer before issuing any refund."</span>)</span>
+<span class="hl">    <span class="kw">if</span> amount &gt; REFUND_LIMIT:</span>
+<span class="hl">        <span class="kw">return</span> (<span class="nm">True</span>, <span class="fn">f</span><span class="st">"BLOCKED: refund of ${amount} exceeds the "</span></span>
+<span class="hl">                      <span class="fn">f</span><span class="st">"${REFUND_LIMIT} limit. Escalate to a human agent."</span>)</span>
+    <span class="cm"># Gate passed — only now do we touch the real system.</span>
+    process_refund(args[<span class="st">"order_id"</span>], amount)
+    <span class="kw">return</span> (<span class="nm">False</span>, <span class="fn">f</span><span class="st">"Refund of ${amount} issued for {args['order_id']}."</span>)
+
+messages = [{<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="st">"Refund order A-91 for $750."</span>}]
+
+<span class="kw">while</span> <span class="nm">True</span>:
+    resp = client.messages.create(
+        model=MODEL, max_tokens=<span class="nm">16000</span>, tools=tools, messages=messages,
+    )
+    <span class="kw">if</span> resp.stop_reason != <span class="st">"tool_use"</span>:
+        <span class="kw">break</span>
+
+    messages.append({<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>: resp.content})
+    results = []
+    <span class="kw">for</span> block <span class="kw">in</span> resp.content:
+        <span class="kw">if</span> block.type == <span class="st">"tool_use"</span> <span class="kw">and</span> block.name == <span class="st">"issue_refund"</span>:
+            is_error, msg = <span class="fn">gate_and_run_refund</span>(
+                block.input, customer_verified=<span class="fn">lookup_verified</span>(),
+            )
+<span class="hl">            results.append({</span>
+<span class="hl">                <span class="st">"type"</span>: <span class="st">"tool_result"</span>,</span>
+<span class="hl">                <span class="st">"tool_use_id"</span>: block.id,</span>
+<span class="hl">                <span class="st">"content"</span>: msg,</span>
+<span class="hl">                <span class="st">"is_error"</span>: is_error,   <span class="cm"># True ⇒ Claude sees the block, adapts</span></span>
+<span class="hl">            })</span>
+    messages.append({<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: results})
+
+<span class="fn">print</span>(<span class="fn">next</span>(b.text <span class="kw">for</span> b <span class="kw">in</span> resp.content <span class="kw">if</span> b.type == <span class="st">"text"</span>))</code></pre></div>
+    <div class="callout tip">
+      <div class="h">✅ Why this is bulletproof</div>
+      <p>Claude can <em>request</em> a $750 refund all day. The number <code>750 &gt; 500</code> is evaluated in Python, not by the model — so the refund simply cannot happen. Claude only learns it was blocked, and re-plans (asks to verify, or escalates).</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>The same gate as a Claude Code <code>PreToolUse</code> hook</h2>
+    <p class="lead">Illustrative — the harness runs this command before the tool executes; a blocking exit prevents the call. <b>Shape is version-sensitive: verify the event names and schema in current docs.</b></p>
+    <div class="codewrap solo"><pre><code><span class="cm">// settings.json — illustrative PreToolUse hook (shape may change; verify in docs)</span>
+{
+  <span class="st">"hooks"</span>: {
+<span class="hl">    <span class="st">"PreToolUse"</span>: [{</span>
+<span class="hl">      <span class="st">"matcher"</span>: <span class="st">"issue_refund"</span>,        <span class="cm">// only gate this tool</span></span>
+<span class="hl">      <span class="st">"hooks"</span>: [{</span>
+<span class="hl">        <span class="st">"type"</span>: <span class="st">"command"</span>,</span>
+<span class="hl">        <span class="cm">// exits non-zero (blocks) unless verified AND amount &lt;= 500</span></span>
+<span class="hl">        <span class="st">"command"</span>: <span class="st">"./hooks/refund-gate.sh"</span></span>
+<span class="hl">      }]</span>
+<span class="hl">    }]</span>
+  }
+}</code></pre></div>
+    <div class="codewrap solo"><pre><code><span class="cm">#!/usr/bin/env bash</span>
+<span class="cm"># refund-gate.sh — receives the pending tool call on stdin as JSON.</span>
+<span class="cm"># Deterministic check; non-zero exit blocks the tool. Verify field</span>
+<span class="cm"># names / block protocol against the current Claude Code hook docs.</span>
+payload=$(cat)
+amount=$(<span class="fn">echo</span> <span class="st">"$payload"</span> | jq <span class="st">'.tool_input.amount'</span>)
+verified=$(./scripts/customer-verified.sh <span class="st">"$payload"</span>)
+
+<span class="kw">if</span> [ <span class="st">"$verified"</span> != <span class="st">"true"</span> ]; <span class="kw">then</span>
+  <span class="fn">echo</span> <span class="st">"BLOCKED: customer not verified"</span> &gt;&amp;2; <span class="kw">exit</span> <span class="nm">2</span>
+<span class="kw">fi</span>
+<span class="kw">if</span> [ <span class="st">"$(echo "$amount &gt; 500" | bc)"</span> -eq <span class="nm">1</span> ]; <span class="kw">then</span>
+  <span class="fn">echo</span> <span class="st">"BLOCKED: over \$500 limit"</span> &gt;&amp;2; <span class="kw">exit</span> <span class="nm">2</span>
+<span class="kw">fi</span>
+<span class="kw">exit</span> <span class="nm">0</span>   <span class="cm"># allow</span></code></pre></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">6</span>Reversibility heuristic &amp; promoting risky actions</h2>
+    <p>Which actions deserve a gate? Gate the ones that are <b>hard to reverse or have side effects</b>: <code>send_email</code>, <code>issue_refund</code>, <code>delete_record</code>, <code>deploy</code>. Cheap, read-only actions usually don't need one.</p>
+    <div class="grid2">
+      <div class="compare good">
+        <h4>Gateable: dedicated tool</h4>
+        <p>A typed <code>issue_refund(order_id, amount)</code> tool gives your harness a clean hook with structured arguments — easy to inspect <code>amount</code> and gate on it.</p>
+      </div>
+      <div class="compare bad">
+        <h4>Hard to gate: opaque bash</h4>
+        <p><code>bash -c "curl -X POST .../refund -d amount=750"</code> hides the action inside an arbitrary command string. The harness can't reliably parse intent, so there's nothing clean to gate on.</p>
+      </div>
+    </div>
+    <div class="callout key">
+      <div class="h">🎯 Promote risky actions to dedicated tools</div>
+      <p>If a dangerous action is reachable through a general-purpose <code>bash</code> tool, <b>promote it to a dedicated, typed tool</b> so the harness gets a hook to gate on. Designing the tool surface for gateability is itself an orchestration decision.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">7</span>Try it: refund gate simulator</h2>
+    <p class="lead">A prompt instruction would let some of these requests slip through. The deterministic gate never does — flip the inputs and watch.</p>
+    <div class="demo">
+      <h4>Deterministic refund gate</h4>
+      <div class="btnrow">
+        <label class="toggle"><input type="checkbox" id="verified"> Customer verified</label>
+      </div>
+      <div class="btnrow">
+        <span style="color:var(--muted);font-size:14px">Refund amount&nbsp;($):</span>
+        <button class="btn" id="dec">−</button>
+        <span id="amt" style="font-family:var(--mono);min-width:84px;text-align:center;font-size:16px;color:var(--accent-2)">300</span>
+        <button class="btn" id="inc">+</button>
+        <button class="btn active" id="attempt" style="margin-left:6px">Attempt refund</button>
+      </div>
+      <div class="out" id="out">Set the inputs, then attempt a refund.</div>
+      <div class="narrate" id="cap">Limit is $500. Refund executes only when verified AND amount ≤ 500.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">8</span>How this shows up on the exam</h2>
+    <div class="callout key">
+      <div class="h">🎯 Scenario → answer</div>
+      <p><b>Scenario:</b> "Your support agent occasionally issues refunds to unverified customers and sometimes above the $500 cap, despite a detailed system prompt forbidding both. How do you make this never happen again?"</p>
+      <p style="margin-top:8px"><b>Answer:</b> Enforce the rule with a <b>deterministic gate/hook</b> — check <code>customer_verified</code> and <code>amount ≤ 500</code> in your tool-execution code (or a <code>PreToolUse</code> hook) and refuse to run the tool on failure, returning a <code>tool_result</code> with <code>is_error: true</code>. Do <b>not</b> "improve the prompt."</p>
+    </div>
+    <ul class="clean">
+      <li>Pick the <b>deterministic gate/hook</b> whenever a rule <em>must always</em> hold.</li>
+      <li>Reject <b>"make the prompt firmer," "add few-shot examples," and "have the model rate its confidence"</b> — none are deterministic.</li>
+      <li>Gate <b>side-effecting / hard-to-reverse</b> actions: refund, send_email, delete, deploy.</li>
+      <li><b>Promote risky actions to dedicated tools</b> so the harness has a typed hook to gate on; opaque <code>bash</code> can't be gated cleanly.</li>
+      <li>Prompt guidance still owns <b>probabilistic / preference</b> behavior — tone, soft preferences, when-to-ask.</li>
+    </ul>
+    <div style="margin-top:14px">
+      <a class="pill" href="index.html#d1">Domain 1: Orchestration</a>
+      <a class="pill" href="index.html#principles">Core principles</a>
+      <a class="pill" href="index.html#quiz">Practice quiz</a>
+    </div>
+  </div>
+
+  <div class="footer">CCA Foundations study guide · Deterministic enforcement is the zero-failure answer; prompts are for preferences.</div>
+</div>
+
+<script>
+  (function () {
+    var amount = 300;
+    var LIMIT = 500;
+    var amtEl = document.getElementById("amt");
+    var verEl = document.getElementById("verified");
+    var out = document.getElementById("out");
+
+    function render() {
+      amtEl.textContent = amount;
+    }
+
+    function attempt() {
+      var verified = verEl.checked;
+      var ok = verified && amount <= LIMIT;
+      if (ok) {
+        out.className = "out good";
+        out.textContent = "✓ Gate passed — refund of $" + amount + " executed.";
+      } else {
+        var reasons = [];
+        if (!verified) reasons.push("customer not verified");
+        if (amount > LIMIT) reasons.push("over $" + LIMIT + " limit");
+        out.className = "out bad";
+        out.textContent = "✗ Blocked: " + reasons.join(" / ") + ".";
+      }
+    }
+
+    document.getElementById("inc").addEventListener("click", function () {
+      amount += 50; render();
+    });
+    document.getElementById("dec").addEventListener("click", function () {
+      amount = Math.max(0, amount - 50); render();
+    });
+    document.getElementById("attempt").addEventListener("click", attempt);
+    verEl.addEventListener("change", attempt);
+
+    render();
+  })();
+</script>
+</body>
+</html>

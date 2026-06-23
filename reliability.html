@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reliability — escalation, error propagation, provenance, human review</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D5 · Context &amp; Reliability · 15%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">Claude Certified Architect — Foundations</div>
+    <h1>Reliability: knowing when to escalate, fail loud, and keep your sources</h1>
+    <p>Reliable agents don't just produce answers — they propagate failures with structure, escalate for the right reasons, preserve where every claim came from, and let humans check the segments that actually matter. This page walks the four reliability levers the exam tests, and the distractors it uses to trip you up.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">ℹ️ Verified against the Claude API reference</div>
+    <p>Code uses the Anthropic Python SDK; the default model is <code>claude-opus-4-8</code> with adaptive thinking.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>Escalation: the right triggers vs. the seductive wrong ones</h2>
+    <p class="lead">Escalation routes a case to a human. Get the trigger wrong and you either flood the queue or strand a stuck user. The exam leans hard on two distractors: <em>sentiment</em> and <em>self-rated confidence</em>.</p>
+
+    <h3>DO escalate when…</h3>
+    <ul class="clean">
+      <li><strong>The human explicitly asks for it.</strong> Honor it <em>immediately</em> — no retry loop, no "let me try once more."</li>
+      <li><strong>Policy doesn't cover the case.</strong> A genuine gap or genuine ambiguity is a human decision, not a guess.</li>
+      <li><strong>The agent can't make progress.</strong> Blocked, missing access, no path forward → escalate.</li>
+      <li><strong>Identity is ambiguous.</strong> On <em>multiple matching records</em>, <span class="hl">ASK for another identifier</span> rather than guessing which one is the right person.</li>
+    </ul>
+
+    <h3>DON'T escalate when…</h3>
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>❌ Negative sentiment</h4>
+        <p>An angry or frustrated tone is not complexity. <strong>Sentiment ≠ complexity.</strong> A furious user with a one-click answer doesn't need a human; a calm user with a policy gap does.</p>
+      </div>
+      <div class="compare bad">
+        <h4>❌ The model's self-rated confidence</h4>
+        <p>"I'm 4/10 confident" is <strong>uncalibrated</strong> — the model's self-report doesn't reliably track correctness. Don't gate escalation on it.</p>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <div class="h">⚠️ Exam trap</div>
+      <p>Both "escalate on negative sentiment" and "escalate when the model says it's not confident" are <em>repeated distractors</em>. They feel responsible, but neither is a valid trigger. The valid triggers are: explicit request, policy gap / ambiguity, no-progress, and ambiguous identity (ask-for-identifier).</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>Try it: escalate, or not?</h2>
+    <p class="lead">Click a situation. The widget shows the correct call (escalate / ask / do not) and, for the distractors, <em>why</em> the tempting answer is wrong.</p>
+
+    <div class="demo">
+      <h4>Escalation decision tester</h4>
+      <div class="btnrow" id="esc-btns"></div>
+      <div id="esc-out" class="out" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>The escalation decision in code</h2>
+    <p class="lead">A decision function makes the valid triggers explicit and the distractors visible as rejected branches.</p>
+    <div class="codewrap solo">
+<pre><code><span class="cm"># Escalation policy. Default model for any downstream calls: claude-opus-4-8</span>
+<span class="kw">def</span> <span class="fn">escalation_decision</span>(case):
+    <span class="cm"># --- DO escalate ---------------------------------------------------</span>
+    <span class="kw">if</span> case.<span class="nm">explicit_human_request</span>:
+        <span class="kw">return</span> <span class="st">"escalate_now"</span>        <span class="cm"># honor immediately, no retry</span>
+    <span class="kw">if</span> case.<span class="nm">policy_gap</span> <span class="kw">or</span> case.<span class="nm">genuine_ambiguity</span>:
+        <span class="kw">return</span> <span class="st">"escalate"</span>            <span class="cm"># human owns the gap</span>
+    <span class="kw">if</span> case.<span class="nm">cannot_progress</span>:
+        <span class="kw">return</span> <span class="st">"escalate"</span>            <span class="cm"># blocked / no path forward</span>
+    <span class="kw">if</span> <span class="fn">len</span>(case.<span class="nm">matching_records</span>) &gt; <span class="nm">1</span>:
+        <span class="hl"><span class="kw">return</span> <span class="st">"ask_for_identifier"</span></span>  <span class="cm"># DON'T guess which record</span>
+
+    <span class="cm"># --- DON'T escalate (rejected distractors) -------------------------</span>
+    <span class="cm"># if case.sentiment == "angry":   return "escalate"  # WRONG: sentiment != complexity</span>
+    <span class="cm"># if case.self_confidence &lt; 0.5:  return "escalate"  # WRONG: self-rating is uncalibrated</span>
+
+    <span class="kw">return</span> <span class="st">"resolve"</span>                 <span class="cm"># handle it</span></code></pre>
+    </div>
+    <div class="callout tip">
+      <div class="h">💡 Why ask-for-identifier, not escalate?</div>
+      <p>Multiple matches is an <em>information</em> problem, not a judgment problem. One more identifier usually disambiguates without a human. Escalate only if the user can't supply one.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>Error propagation in multi-agent systems</h2>
+    <p class="lead">When a subagent fails, what flows up to the coordinator decides whether the workflow recovers or dies. A bare <code>"failed"</code> string is the failure here — it strips the context the coordinator needs to retry, route around, or report.</p>
+
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>❌ Bare failure</h4>
+        <p><code>return "operation failed"</code> — the coordinator can't tell <em>what</em> failed, what was tried, what partial work survived, or what to do next. It either silently swallows it or kills the whole run.</p>
+      </div>
+      <div class="compare good">
+        <h4>✅ Structured failure</h4>
+        <p>Propagate <code>{failure type, attempted query, partial results, suggested alternatives}</code>. The coordinator can isolate the branch, salvage partials, and try an alternative.</p>
+      </div>
+    </div>
+
+    <div class="codewrap solo">
+<pre><code><span class="cm"># What a subagent returns to the coordinator on failure.</span>
+<span class="cm"># BAD:  return "operation failed"   # opaque — coordinator is blind</span>
+<span class="hl">failure = {</span>
+    <span class="st">"status"</span>: <span class="st">"failed"</span>,
+    <span class="st">"failure_type"</span>: <span class="st">"timeout"</span>,               <span class="cm"># classify it</span>
+    <span class="st">"attempted_query"</span>: <span class="st">"orders WHERE user_id=42 AND ts&gt;2026-01-01"</span>,
+    <span class="st">"partial_results"</span>: [{<span class="st">"order_id"</span>: <span class="nm">991</span>}, {<span class="st">"order_id"</span>: <span class="nm">993</span>}],
+    <span class="st">"alternatives"</span>: [<span class="st">"retry with a narrower date range"</span>,
+                     <span class="st">"query the read replica"</span>],
+<span class="hl">}</span>
+<span class="kw">return</span> failure</code></pre>
+    </div>
+
+    <table>
+      <thead><tr><th>Failure shape</th><th>Coordinator behavior</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Transient</strong> (timeout, rate limit)</td><td>Recover <em>locally</em> — retry the branch.</td></tr>
+        <tr><td><strong>Persistent</strong> (one branch can't complete)</td><td>Isolate &amp; continue — never kill the whole workflow because one branch failed.</td></tr>
+        <tr><td><strong>Any</strong> failure</td><td>Never silently suppress — propagate structured context up.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <div class="h">⚠️ Two cardinal sins</div>
+      <p><strong>Silent suppression</strong> (swallowing the error so the coordinator thinks all is well) and <strong>killing the whole workflow</strong> because one branch failed. Isolate the failed branch and keep the others running.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>Provenance: keep claim→source through synthesis</h2>
+    <p class="lead">When an agent synthesizes from many sources, the easy mistake is to fuse everything into prose and lose which source backed which claim. Preserve the mapping — and when sources disagree, <em>annotate the conflict with attribution</em> instead of silently picking a winner.</p>
+
+    <div class="codewrap solo">
+<pre><code><span class="cm"># Each claim carries its source AND a date.</span>
+revenue_claim = {
+    <span class="st">"claim"</span>: <span class="st">"Q4 revenue was $4.2M"</span>,
+    <span class="st">"source"</span>: <span class="st">"10-K filing"</span>,
+    <span class="hl"><span class="st">"date"</span>: <span class="st">"2026-02-15"</span></span>,            <span class="cm"># date so old != new isn't read as conflict</span>
+}
+
+<span class="cm"># Conflict: TWO attributed, dated entries — not one picked value.</span>
+headcount = {
+    <span class="st">"claim"</span>: <span class="st">"employee headcount"</span>,
+    <span class="hl"><span class="st">"conflict"</span>: [</span>
+        {<span class="st">"value"</span>: <span class="st">"1,200"</span>, <span class="st">"source"</span>: <span class="st">"press release"</span>, <span class="st">"date"</span>: <span class="st">"2025-06-01"</span>},
+        {<span class="st">"value"</span>: <span class="st">"1,450"</span>, <span class="st">"source"</span>: <span class="st">"investor deck"</span>, <span class="st">"date"</span>: <span class="st">"2026-03-01"</span>},
+    <span class="hl">]</span>,
+    <span class="cm"># Don't collapse to one number. The "conflict" is a 9-month gap, not a contradiction.</span>
+}</code></pre>
+    </div>
+
+    <ul class="clean">
+      <li><strong>Preserve claim→source mappings through synthesis</strong> — don't dissolve them into unattributed prose.</li>
+      <li><strong>On conflict, annotate with attribution</strong> — present both, sourced; don't silently pick one.</li>
+      <li><strong>Include dates</strong> — a temporal difference (old figure vs. new figure) shouldn't be misread as a contradiction.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">6</span>Human review &amp; sampling: aggregates lie</h2>
+    <p class="lead">"97% accurate" sounds great — and can hide a document type running at 60%. Reliable review uses field-level confidence calibrated on labeled data, stratified sampling, and per-segment accuracy checks.</p>
+
+    <table>
+      <thead><tr><th>Lever</th><th>Do this</th><th>Not this</th></tr></thead>
+      <tbody>
+        <tr><td>Confidence</td><td><strong>Field-level</strong>, calibrated on a <strong>labeled set</strong></td><td>The model's self-report</td></tr>
+        <tr><td>Sampling</td><td><strong>Stratified</strong> across types &amp; fields</td><td>Uniform random over the whole pile</td></tr>
+        <tr><td>Accuracy</td><td>Check <strong>by document type</strong> and <strong>by field</strong></td><td>A single aggregate number</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <div class="h">⚠️ The aggregate trap</div>
+      <p>An aggregate "97% accurate" can <strong>hide a bad segment</strong> — e.g. one document type at 60%. Slice accuracy by type and by field, or you'll ship the weak segment with confidence.</p>
+    </div>
+
+    <div class="demo">
+      <h4>Aggregate vs. per-segment</h4>
+      <p class="narrate">Toggle to see how a healthy headline can mask a failing segment.</p>
+      <div class="btnrow">
+        <button class="chip active" id="seg-toggle" onclick="toggleSeg()">Show per-segment breakdown</button>
+      </div>
+      <div id="seg-out" class="out good">Aggregate accuracy: <strong>97%</strong> — looks shippable.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">7</span>How this shows up on the exam</h2>
+    <div class="callout key">
+      <div class="h">🎯 Scenario → answer</div>
+      <p><strong>Scenario:</strong> "A support agent reads an angry message it could resolve in one step, but the model reports low confidence. Two customers match the name on file. What should it do?"</p>
+      <p><strong>Answer:</strong> Do <em>not</em> escalate on the anger (sentiment ≠ complexity) or on the low self-confidence (uncalibrated). Because two records match, <strong>ask for another identifier</strong> rather than guessing — only escalate if the user can't provide one, the case is blocked, or it hits a policy gap.</p>
+    </div>
+    <ul class="clean">
+      <li><strong>Escalate</strong> on explicit request, policy gap / ambiguity, no-progress, and ambiguous identity (ask-for-identifier). <strong>NOT</strong> on sentiment or self-rated confidence.</li>
+      <li><strong>Error propagation:</strong> structured context up to the coordinator + local recovery for transient failures; never silent, never kill the whole workflow.</li>
+      <li><strong>Provenance:</strong> preserve claim→source through synthesis; annotate conflicts with attribution and dates.</li>
+      <li><strong>Review:</strong> field/segment-level accuracy beats an aggregate; stratified sampling; confidence calibrated on labeled data.</li>
+    </ul>
+    <div class="btnrow">
+      <a class="pill" href="index.html#d5">D5 overview</a>
+      <a class="pill" href="index.html#principles">Core principles</a>
+      <a class="pill" href="index.html#quiz">Practice quiz</a>
+    </div>
+  </div>
+
+  <div class="footer">Claude Certified Architect — Foundations · Domain 5: Context &amp; Reliability · Verified against the Claude API reference · Default model claude-opus-4-8</div>
+</div>
+
+<script>
+var SITUATIONS = [
+  { label: "User explicitly asks for a human",
+    verdict: "good", call: "Escalate now",
+    why: "An explicit human request is honored immediately — no retry loop first." },
+  { label: "Policy doesn't cover this case",
+    verdict: "good", call: "Escalate",
+    why: "A genuine policy gap or ambiguity is a human decision, not a guess." },
+  { label: "Can't make progress / blocked",
+    verdict: "good", call: "Escalate",
+    why: "No path forward means a human needs to unblock it." },
+  { label: "3 customers match the name",
+    verdict: "ask", call: "Ask for another identifier",
+    why: "Ambiguous identity is an information problem. Ask for one more identifier rather than guessing which record is right; escalate only if the user can't supply one." },
+  { label: "User sounds angry / frustrated",
+    verdict: "bad", call: "Do NOT escalate on sentiment",
+    why: "Sentiment is not complexity. An angry user with a one-click answer doesn't need a human. Tempting, but a repeated exam distractor." },
+  { label: "Model says it's 4/10 confident",
+    verdict: "bad", call: "Do NOT escalate on self-rated confidence",
+    why: "The model's self-rating is uncalibrated — it doesn't reliably track correctness, so it's not a valid escalation trigger. Another repeated distractor." }
+];
+
+(function () {
+  var row = document.getElementById("esc-btns");
+  SITUATIONS.forEach(function (s, i) {
+    var b = document.createElement("button");
+    b.className = "btn";
+    b.textContent = s.label;
+    b.onclick = function () { pick(i, b); };
+    row.appendChild(b);
+  });
+})();
+
+function pick(i, btn) {
+  var s = SITUATIONS[i];
+  var btns = document.querySelectorAll("#esc-btns .btn");
+  for (var k = 0; k < btns.length; k++) { btns[k].classList.remove("active"); }
+  btn.classList.add("active");
+
+  var out = document.getElementById("esc-out");
+  out.style.display = "block";
+  out.className = "out " + (s.verdict === "bad" ? "bad" : "good");
+  var tag = s.verdict === "bad" ? "✗ Distractor — wrong reason"
+          : s.verdict === "ask" ? "✓ Ask, don't guess"
+          : "✓ Escalate";
+  out.innerHTML = "<strong>" + tag + ": " + s.call + "</strong><br>" + s.why;
+}
+
+function toggleSeg() {
+  var btn = document.getElementById("seg-toggle");
+  var out = document.getElementById("seg-out");
+  var showing = btn.getAttribute("data-on") === "1";
+  if (showing) {
+    btn.setAttribute("data-on", "0");
+    btn.textContent = "Show per-segment breakdown";
+    out.className = "out good";
+    out.innerHTML = "Aggregate accuracy: <strong>97%</strong> — looks shippable.";
+  } else {
+    btn.setAttribute("data-on", "1");
+    btn.textContent = "Show aggregate only";
+    out.className = "out bad";
+    out.innerHTML = "By document type:<br>" +
+      "&nbsp;&nbsp;Invoices: <strong>99%</strong><br>" +
+      "&nbsp;&nbsp;Receipts: <strong>98%</strong><br>" +
+      "&nbsp;&nbsp;Handwritten forms: <strong>60%</strong> ← the 97% hid this<br>" +
+      "The aggregate masked a failing segment. Slice by type and field.";
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tool design — descriptions, tool_choice &amp; structured errors · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+</head>
+<body>
+<div class="main">
+  <div class="topbar">
+    <a class="back" href="index.html">← Back to study guide</a>
+    <span class="badge">D2 · Tools &amp; MCP · 18%</span>
+  </div>
+
+  <div class="pagehead">
+    <div class="eyebrow">Domain 2 · Tools &amp; MCP</div>
+    <h1>Tool design: descriptions are the steering wheel, plus tool_choice &amp; structured errors</h1>
+    <p>The most-tested tool-design fact: the <em>description</em> is the primary mechanism Claude uses to pick a tool. When two tools get confused, the <b>first</b> fix is always better descriptions — not a classifier, not few-shot examples, not a fine-tune. This page also covers the four <code>tool_choice</code> forms and how to return <em>categorized</em> tool errors so Claude can adapt.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">ℹ️ Verified against the Claude API reference</div>
+    <p>Tool definition = name + description + <code>input_schema</code> (JSON Schema with per-property descriptions, <code>required</code>, and <code>enum</code> for fixed value sets); <code>tool_choice</code> takes <code>auto</code>/<code>any</code>/<code>tool</code>/<code>none</code> (any can add <code>disable_parallel_tool_use</code>); errors go back in a <code>tool_result</code> with <code>is_error: true</code>. Default model <code>claude-opus-4-8</code>.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>Descriptions are the primary tool-selection mechanism</h2>
+    <p class="lead">Claude routes to a tool almost entirely from its <b>name and description</b>. A thin description ("Search.") gives the model nothing to disambiguate on, so it misroutes. A rich, prescriptive description tells it exactly <em>when</em> to call — and when <em>not</em> to.</p>
+    <ul class="clean">
+      <li><b>State the inputs</b> the tool expects, in plain language.</li>
+      <li><b>Give example queries</b> that should trigger it.</li>
+      <li><b>Cover edge cases</b> and ambiguity.</li>
+      <li><b>Be prescriptive about WHEN to call</b> — "Call this when the user asks about current prices or recent events" — not just what it does. On recent Opus models, which reach for tools more conservatively, an explicit trigger condition in the description gives measurable lift in should-call rate.</li>
+    </ul>
+    <div class="callout key">
+      <div class="h">🎯 The one fact to memorize</div>
+      <p>When two tools are confused, the <b>FIRST fix is better descriptions</b> — before few-shot examples, before a routing classifier, before a fine-tuned model, before consolidating tools. Descriptions are the cheapest, highest-leverage lever.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>Minimal vs. rich description (the failure you must recognize)</h2>
+    <p class="lead">Same tool, two descriptions. The minimal one collides with every other tool; the rich one is unambiguous. The exam loves this contrast.</p>
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>✗ Minimal — model has to guess</h4>
+        <p>"Get the weather." No inputs, no trigger condition, no edge cases. The model can't tell this apart from a generic search tool, so routing becomes a coin flip on ambiguous queries.</p>
+      </div>
+      <div class="compare good">
+        <h4>✓ Rich — prescriptive &amp; disambiguating</h4>
+        <p>States the input (a location), gives example queries, says <em>when</em> to call it and when not, and uses an <code>enum</code> for the fixed unit set. Claude routes correctly with no extra machinery.</p>
+      </div>
+    </div>
+    <div class="codewrap solo"><pre><code><span class="cm">// ✗ MINIMAL — this is what causes misrouting</span>
+{
+  <span class="st">"name"</span>: <span class="st">"get_weather"</span>,
+  <span class="st">"description"</span>: <span class="st">"Get the weather."</span>,
+  <span class="st">"input_schema"</span>: { <span class="st">"type"</span>: <span class="st">"object"</span>, <span class="st">"properties"</span>: { <span class="st">"location"</span>: { <span class="st">"type"</span>: <span class="st">"string"</span> } } }
+}
+
+<span class="cm">// ✓ RICH — prescriptive WHEN-to-use, example query, edge case, enum unit</span>
+{
+  <span class="st">"name"</span>: <span class="st">"get_weather"</span>,
+<span class="hl">  <span class="st">"description"</span>: <span class="st">"Get the CURRENT weather conditions for a single location. "</span></span>
+<span class="hl">    <span class="st">"Call this when the user asks about present weather, temperature, "</span></span>
+<span class="hl">    <span class="st">"or whether it is raining/snowing right now "</span></span>
+<span class="hl">    <span class="st">"(e.g. 'What's it like in Tokyo?', 'Do I need an umbrella in Paris?'). "</span></span>
+<span class="hl">    <span class="st">"Do NOT call for multi-day forecasts or historical climate data. "</span></span>
+<span class="hl">    <span class="st">"If the user gives no location, ask before calling."</span>,</span>
+  <span class="st">"input_schema"</span>: {
+    <span class="st">"type"</span>: <span class="st">"object"</span>,
+    <span class="st">"properties"</span>: {
+      <span class="st">"location"</span>: {
+        <span class="st">"type"</span>: <span class="st">"string"</span>,
+        <span class="st">"description"</span>: <span class="st">"City and country/state, e.g. 'Paris, France' or 'Austin, TX'."</span>
+      },
+      <span class="st">"unit"</span>: {
+        <span class="st">"type"</span>: <span class="st">"string"</span>,
+<span class="hl">        <span class="st">"enum"</span>: [<span class="st">"celsius"</span>, <span class="st">"fahrenheit"</span>],   <span class="cm">// enum = fixed value set</span></span>
+        <span class="st">"description"</span>: <span class="st">"Temperature unit; default celsius."</span>
+      }
+    },
+    <span class="st">"required"</span>: [<span class="st">"location"</span>]
+  }
+}</code></pre></div>
+    <div class="callout tip">
+      <div class="h">✅ Per-property descriptions + enum matter too</div>
+      <p>Every property gets its own <code>description</code>, and any fixed set of values (units, statuses, plan tiers) should be an <code>enum</code> — that constrains the model to valid values instead of free-text it might get wrong.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>tool_choice — the four forms</h2>
+    <p class="lead">After descriptions, <code>tool_choice</code> is your explicit lever over whether and which tool runs. Four values; any of them can add <code>disable_parallel_tool_use</code> to cap the response at one tool.</p>
+    <table>
+      <thead><tr><th>Value</th><th>Behavior</th></tr></thead>
+      <tbody>
+        <tr><td><code>{"type": "auto"}</code></td><td><b>Default.</b> Claude decides whether to use a tool at all.</td></tr>
+        <tr><td><code>{"type": "any"}</code></td><td>Claude <b>must use some tool</b> (its choice which).</td></tr>
+        <tr><td><code>{"type": "tool", "name": "x"}</code></td><td>Force a <b>specific</b> tool by name.</td></tr>
+        <tr><td><code>{"type": "none"}</code></td><td>Claude <b>cannot</b> use any tool this turn.</td></tr>
+      </tbody>
+    </table>
+    <div class="codewrap solo"><pre><code><span class="cm"># The four tool_choice forms (Python dict literals)</span>
+auto   = {<span class="st">"type"</span>: <span class="st">"auto"</span>}                          <span class="cm"># default: Claude decides</span>
+any_   = {<span class="st">"type"</span>: <span class="st">"any"</span>}                           <span class="cm"># must use SOME tool</span>
+forced = {<span class="st">"type"</span>: <span class="st">"tool"</span>, <span class="st">"name"</span>: <span class="st">"get_weather"</span>}    <span class="cm"># force a specific tool</span>
+none   = {<span class="st">"type"</span>: <span class="st">"none"</span>}                          <span class="cm"># no tools this turn</span>
+
+<span class="cm"># Any of them can force at most one tool per response:</span>
+<span class="hl">any_one = {<span class="st">"type"</span>: <span class="st">"any"</span>, <span class="st">"disable_parallel_tool_use"</span>: <span class="nm">True</span>}</span>
+
+resp = client.messages.create(
+    model=<span class="st">"claude-opus-4-8"</span>, max_tokens=<span class="nm">16000</span>,
+    tools=tools, tool_choice=auto,
+    messages=[{<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="st">"What's the weather in Paris?"</span>}],
+)</code></pre></div>
+    <div class="callout tip">
+      <div class="h">✅ When to force vs. let it decide</div>
+      <p>Leave it on <code>auto</code> for normal agents. Use <code>tool</code> to force a known step (e.g. always extract structured data first), <code>any</code> when you want a tool call but not a chatty answer, and <code>none</code> to make the model answer in prose for one turn.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>Too many tools degrades selection</h2>
+    <p>Selection quality drops as the tool count climbs — an agent with 18 overlapping tools routes far worse than one with a focused 4–5. Scope tools to the agent's role (least privilege): give each agent only the tools its job needs.</p>
+    <div class="grid2">
+      <div class="compare bad">
+        <h4>✗ 18 tools, one mega-agent</h4>
+        <p>Overlapping descriptions, ambiguous boundaries, and a long list to choose from. Misrouting goes up; the model wastes turns picking wrong.</p>
+      </div>
+      <div class="compare good">
+        <h4>✓ 4–5 tools, scoped per role</h4>
+        <p>Each agent has a tight, non-overlapping set matched to its responsibility. Cleaner routing and a smaller attack/blast surface.</p>
+      </div>
+    </div>
+    <div class="callout key">
+      <div class="h">🎯 Scope tools per agent role</div>
+      <p>If a scenario describes routing problems with a large undifferentiated tool set, two right answers stack: <b>sharpen the descriptions</b> and <b>split the tools across role-scoped agents</b>. Fewer, clearer tools beat many fuzzy ones.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>Structured tool errors — categories, retryable, and empty ≠ error</h2>
+    <p class="lead">When a tool fails, never collapse everything to a generic "operation failed." Distinguish the <b>category</b> so Claude can adapt: <b>transient</b> (retryable), <b>validation</b> (fix the args), <b>business</b> (rule violated), <b>permission</b> (not allowed). And critically — a <b>valid empty result is not an error.</b></p>
+    <table>
+      <thead><tr><th>Category</th><th><code>is_error</code></th><th>What Claude should do</th></tr></thead>
+      <tbody>
+        <tr><td>Transient (timeout, 503)</td><td><code>true</code></td><td>Retry — the call may succeed next time.</td></tr>
+        <tr><td>Validation (bad args)</td><td><code>true</code></td><td>Fix the arguments and re-call.</td></tr>
+        <tr><td>Business (rule violated)</td><td><code>true</code></td><td>Re-plan / escalate; don't blindly retry.</td></tr>
+        <tr><td>Permission (not allowed)</td><td><code>true</code></td><td>Stop; ask the user or pick another path.</td></tr>
+        <tr><td><b>No rows found</b></td><td><code>false</code></td><td>This is a <b>valid result</b> — return the empty data.</td></tr>
+      </tbody>
+    </table>
+    <div class="codewrap solo"><pre><code><span class="cm"># A transient/retryable failure: is_error True + an informative message.</span>
+<span class="cm"># NOTE: field names like errorCategory / isRetryable below are illustrative</span>
+<span class="cm"># conventions you encode in the content string — they are NOT mandated</span>
+<span class="cm"># API fields. The only special field the API reads is "is_error".</span>
+transient_error = {
+    <span class="st">"type"</span>: <span class="st">"tool_result"</span>,
+    <span class="st">"tool_use_id"</span>: block.id,
+<span class="hl">    <span class="st">"is_error"</span>: <span class="nm">True</span>,   <span class="cm"># real failure ⇒ Claude sees it and can retry/adapt</span></span>
+    <span class="st">"content"</span>: json.dumps({
+<span class="hl">        <span class="st">"errorCategory"</span>: <span class="st">"transient"</span>,   <span class="cm"># illustrative convention</span></span>
+<span class="hl">        <span class="st">"isRetryable"</span>: <span class="nm">True</span>,            <span class="cm"># illustrative convention</span></span>
+        <span class="st">"message"</span>: <span class="st">"Inventory service timed out after 5s. Safe to retry."</span>,
+    }),
+}
+
+<span class="cm"># An ACCESS FAILURE is distinct from a VALID EMPTY RESULT.</span>
+<span class="cm"># "No rows found" is NOT an error — return the data, is_error stays False:</span>
+empty_but_valid = {
+    <span class="st">"type"</span>: <span class="st">"tool_result"</span>,
+    <span class="st">"tool_use_id"</span>: block.id,
+<span class="hl">    <span class="cm"># no is_error key (defaults False) — the query succeeded, just 0 rows</span></span>
+    <span class="st">"content"</span>: json.dumps({<span class="st">"results"</span>: [], <span class="st">"count"</span>: <span class="nm">0</span>}),
+}</code></pre></div>
+    <div class="callout warn">
+      <div class="h">⚠️ The two errors people make</div>
+      <p><b>(1)</b> Collapsing every failure to one generic message — Claude can't tell "retry me" from "you can't do that." <b>(2)</b> Flagging a valid empty result as an error — Claude then thinks the lookup broke and retries or escalates pointlessly. Distinguish an <b>access failure</b> from a <b>valid empty result</b>.</p>
+    </div>
+    <div class="callout tip">
+      <div class="h">✅ Built-in tool reflexes (quick recall)</div>
+      <p><code>Grep</code> = content search · <code>Glob</code> = path/filename patterns · <code>Edit</code> = unique-match string edits (fall back to Read + Write when the match isn't unique).</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">6</span>Try it: the tool router</h2>
+    <p class="lead">Two tools — <code>search_tickets</code> (support tickets) and <code>search_docs</code> (help-center articles). Toggle between <b>rich</b> and <b>minimal</b> descriptions, then route each query. Rich descriptions route correctly; minimal ones leave the model guessing.</p>
+    <div class="demo">
+      <h4>Description quality → routing accuracy</h4>
+      <div class="btnrow">
+        <span class="chip active" id="mode-rich" data-mode="rich">Rich descriptions</span>
+        <span class="chip" id="mode-min" data-mode="min">Minimal descriptions</span>
+      </div>
+      <div class="btnrow">
+        <button class="btn" data-q="0">"Where's my open ticket #4821?"</button>
+        <button class="btn" data-q="1">"How do I reset my password?"</button>
+        <button class="btn" data-q="2">"Show docs on the refund policy."</button>
+      </div>
+      <div class="out" id="out">Pick a description mode, then click a query to route it.</div>
+      <div class="narrate" id="cap">With rich descriptions the right tool is unambiguous. With minimal ones, both tools just say "Search." — so the model guesses.</div>
+    </div>
+    <div class="callout key">
+      <div class="h">🎯 What the demo proves</div>
+      <p>The fix for misrouting is <b>better descriptions</b>, not a classifier or a fine-tune. Swapping minimal → rich flips ambiguous guesses into correct routes with zero new infrastructure.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">7</span>How this shows up on the exam</h2>
+    <div class="callout key">
+      <div class="h">🎯 Scenario → answer</div>
+      <p><b>Scenario:</b> "Your agent keeps confusing <code>search_tickets</code> and <code>search_docs</code>, calling the wrong one. What should you try FIRST?"</p>
+      <p style="margin-top:8px"><b>Answer:</b> <b>Improve the tool descriptions</b> — make each one prescriptive about <em>when</em> to call it (inputs, example queries, edge cases, when-NOT-to-use). This comes <em>before</em> few-shot examples, a routing classifier, a fine-tuned model, or consolidating tools.</p>
+    </div>
+    <ul class="clean">
+      <li><b>Descriptions are the primary selection lever</b> and the <b>first fix</b> for tool confusion — reject classifier / few-shot / fine-tune as the first move.</li>
+      <li>Be <b>prescriptive about WHEN to call</b>; add per-property descriptions and <code>enum</code> for fixed value sets.</li>
+      <li><b>Too many tools hurts selection</b> — scope tools per agent role (least privilege); 4–5 focused beats 18 overlapping.</li>
+      <li>Know the four <code>tool_choice</code> forms: <code>auto</code> / <code>any</code> / <code>tool</code> / <code>none</code> (+ <code>disable_parallel_tool_use</code>).</li>
+      <li><b>Structured errors</b> by category — transient / validation / business / permission; set <code>is_error: true</code> with an informative message; <b>retryable vs not</b>.</li>
+      <li>Distinguish an <b>access failure</b> from a <b>valid empty result</b> — "no rows found" is not an error.</li>
+    </ul>
+    <div style="margin-top:14px">
+      <a class="pill" href="index.html#d2">Domain 2: Tools &amp; MCP</a>
+      <a class="pill" href="index.html#flash">Flashcards</a>
+      <a class="pill" href="index.html#quiz">Practice quiz</a>
+    </div>
+  </div>
+
+  <div class="footer">CCA Foundations study guide · The tool description is the steering wheel — fix routing there first.</div>
+</div>
+
+<script>
+  (function () {
+    var mode = "rich";
+    var out = document.getElementById("out");
+    var cap = document.getElementById("cap");
+    var rich = document.getElementById("mode-rich");
+    var min = document.getElementById("mode-min");
+
+    // Each query's correct tool when descriptions are rich.
+    var queries = [
+      { text: "Where's my open ticket #4821?", correct: "search_tickets" },
+      { text: "How do I reset my password?",     correct: "search_docs" },
+      { text: "Show docs on the refund policy.", correct: "search_docs" }
+    ];
+
+    function setMode(m) {
+      mode = m;
+      rich.className = "chip" + (m === "rich" ? " active" : "");
+      min.className = "chip" + (m === "min" ? " active" : "");
+      if (m === "rich") {
+        cap.textContent = "Rich: each tool says when to use it (ticket IDs/account issues → search_tickets; how-to/policy articles → search_docs). Routing is unambiguous.";
+      } else {
+        cap.textContent = "Minimal: both tools just say “Search.” — the model has nothing to disambiguate on, so it guesses.";
+      }
+      out.className = "out";
+      out.textContent = "Mode set to " + (m === "rich" ? "rich" : "minimal") + " descriptions. Click a query to route it.";
+    }
+
+    function route(i) {
+      var q = queries[i];
+      if (mode === "rich") {
+        out.className = "out good";
+        out.textContent = "→ Routed to " + q.correct + "  ✓ correct (description made the trigger clear).";
+      } else {
+        out.className = "out bad";
+        out.textContent = "→ Ambiguous — the model guesses between search_tickets and search_docs. Fix: better descriptions, not a classifier.";
+      }
+    }
+
+    rich.addEventListener("click", function () { setMode("rich"); });
+    min.addEventListener("click", function () { setMode("min"); });
+
+    var btns = document.querySelectorAll(".demo .btn[data-q]");
+    for (var b = 0; b < btns.length; b++) {
+      (function (btn) {
+        btn.addEventListener("click", function () {
+          route(parseInt(btn.getAttribute("data-q"), 10));
+        });
+      })(btns[b]);
+    }
+
+    setMode("rich");
+  })();
+</script>
+</body>
+</html>

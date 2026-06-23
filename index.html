@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Certified Architect — Foundations · Interactive Study Guide</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel-2:#1c232d; --border:#2a323d;
+    --txt:#e6edf3; --muted:#9aa7b5; --dim:#6b7785;
+    --accent:#d6753b; --accent-2:#e89b6c; --accent-soft:#3a2417;
+    --good:#3fb950; --good-soft:#12251a; --bad:#f85149; --bad-soft:#2a1416;
+    --blue:#58a6ff; --purple:#bc8cff; --yellow:#e3b341;
+    --radius:12px; --shadow:0 8px 30px rgba(0,0,0,.35);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--sans);line-height:1.6;font-size:15.5px}
+  code,kbd{font-family:var(--mono);font-size:.86em;background:var(--panel-2);border:1px solid var(--border);
+    padding:1px 6px;border-radius:6px;color:var(--accent-2)}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  h1,h2,h3{line-height:1.25;margin:0}
+
+  /* ---------- Layout ---------- */
+  .wrap{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+  /* Sidebar */
+  .sidebar{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--panel);
+    border-right:1px solid var(--border);padding:22px 14px;display:flex;flex-direction:column;gap:4px}
+  .brand{padding:4px 8px 16px;border-bottom:1px solid var(--border);margin-bottom:10px}
+  .brand .k{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  .brand .t{font-size:16px;font-weight:700;margin-top:4px}
+  .brand .s{font-size:12px;color:var(--dim);margin-top:2px}
+  .navbtn{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;
+    color:var(--muted);padding:9px 12px;border-radius:8px;cursor:pointer;font-size:14px;font-family:inherit;
+    transition:.15s}
+  .navbtn:hover{background:var(--panel-2);color:var(--txt)}
+  .navbtn.active{background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+  .navbtn .ic{width:22px;text-align:center;font-size:15px}
+  .navbtn .wt{margin-left:auto;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .navgroup{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+    padding:14px 12px 4px;font-weight:700}
+  .progress-mini{margin-top:auto;padding:14px 10px 4px;border-top:1px solid var(--border)}
+  .progress-mini .lbl{font-size:11px;color:var(--dim);display:flex;justify-content:space-between;margin-bottom:6px}
+  .bar{height:7px;background:var(--panel-2);border-radius:99px;overflow:hidden}
+  .bar > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));
+    border-radius:99px;transition:width .4s}
+  .resetbtn{margin-top:10px;width:100%;font-size:11px;color:var(--dim);background:none;border:1px solid var(--border);
+    border-radius:6px;padding:5px;cursor:pointer}
+  .resetbtn:hover{color:var(--bad);border-color:var(--bad)}
+
+  /* Main */
+  .main{padding:38px 48px 120px;max-width:1020px}
+  .view{display:none;animation:fade .25s ease}
+  .view.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .pagehead{margin-bottom:26px}
+  .pagehead .eyebrow{color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+  .pagehead h1{font-size:30px;margin:8px 0 6px}
+  .pagehead p{color:var(--muted);max-width:760px;font-size:15px}
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px;margin-bottom:18px}
+  .card h2{font-size:19px;margin-bottom:4px}
+  .card h3{font-size:15px;margin:18px 0 8px;color:var(--accent-2)}
+  .card p{color:var(--txt)}
+  .lead{color:var(--muted)!important}
+
+  ul.clean{list-style:none;padding:0;margin:12px 0}
+  ul.clean li{padding:9px 0 9px 28px;position:relative;border-bottom:1px solid rgba(42,50,61,.5)}
+  ul.clean li:last-child{border-bottom:none}
+  ul.clean li::before{content:"▸";position:absolute;left:6px;color:var(--accent);font-size:13px;top:9px}
+
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;
+    text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}
+  .tag.good{background:var(--good-soft);color:var(--good)}
+  .tag.bad{background:var(--bad-soft);color:var(--bad)}
+  .tag.acc{background:var(--accent-soft);color:var(--accent-2)}
+  .tag.blue{background:#10243d;color:var(--blue)}
+
+  /* Hero / home */
+  .hero-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:22px 0}
+  .stat{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px}
+  .stat .n{font-size:30px;font-weight:800;color:var(--accent-2)}
+  .stat .l{color:var(--muted);font-size:13px;margin-top:2px}
+
+  /* weighting bars */
+  .weights{margin:6px 0}
+  .wrow{display:grid;grid-template-columns:230px 1fr 48px;align-items:center;gap:14px;padding:8px 0}
+  .wrow .name{font-size:13.5px}
+  .wrow .name b{color:var(--accent-2)}
+  .wbar{height:24px;background:var(--panel-2);border-radius:6px;overflow:hidden;position:relative}
+  .wbar > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:6px}
+  .wrow .pct{text-align:right;font-weight:700;color:var(--accent-2);font-variant-numeric:tabular-nums;font-size:14px}
+  .conf{font-size:11px;color:var(--dim);margin-top:2px}
+
+  /* callouts */
+  .callout{border-radius:var(--radius);padding:16px 18px 16px 20px;margin:16px 0;border-left:4px solid;position:relative}
+  .callout .h{font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .callout.tip{background:var(--good-soft);border-color:var(--good)}
+  .callout.tip .h{color:var(--good)}
+  .callout.warn{background:var(--bad-soft);border-color:var(--bad)}
+  .callout.warn .h{color:var(--bad)}
+  .callout.note{background:#10243d33;border-color:var(--blue)}
+  .callout.note .h{color:var(--blue)}
+  .callout.key{background:var(--accent-soft);border-color:var(--accent)}
+  .callout.key .h{color:var(--accent-2)}
+
+  /* principle cards */
+  .principle{display:flex;gap:16px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    padding:18px 20px;margin-bottom:14px;transition:.18s;cursor:default}
+  .principle:hover{border-color:var(--accent);transform:translateX(3px)}
+  .principle .num{flex:none;width:42px;height:42px;border-radius:11px;background:var(--accent-soft);color:var(--accent-2);
+    display:grid;place-items:center;font-weight:800;font-size:18px}
+  .principle .body h3{font-size:16px;margin-bottom:5px}
+  .principle .body p{color:var(--muted);font-size:14px}
+  .principle .body .vs{margin-top:8px;font-size:13px}
+  .vs .y{color:var(--good)}.vs .n{color:var(--bad)}
+
+  /* checkbox list */
+  .check{display:flex;align-items:flex-start;gap:11px;padding:11px 14px;border-radius:9px;cursor:pointer;
+    transition:.12s;border:1px solid transparent}
+  .check:hover{background:var(--panel-2)}
+  .check input{appearance:none;width:19px;height:19px;border:2px solid var(--border);border-radius:5px;flex:none;
+    margin-top:2px;cursor:pointer;position:relative;transition:.15s}
+  .check input:checked{background:var(--accent);border-color:var(--accent)}
+  .check input:checked::after{content:"✓";position:absolute;color:#fff;font-size:13px;font-weight:800;
+    left:2.5px;top:-2px}
+  .check span{font-size:14px}
+  .check input:checked ~ span{color:var(--dim);text-decoration:line-through}
+
+  /* Flashcards */
+  .fc-stage{perspective:1600px;margin:18px auto;max-width:640px}
+  .fc{position:relative;height:300px;cursor:pointer;transition:transform .5s;transform-style:preserve-3d}
+  .fc.flipped{transform:rotateY(180deg)}
+  .fc .face{position:absolute;inset:0;backface-visibility:hidden;border-radius:16px;padding:30px;
+    display:flex;flex-direction:column;justify-content:center;border:1px solid var(--border);box-shadow:var(--shadow)}
+  .fc .front{background:var(--panel)}
+  .fc .back{background:linear-gradient(160deg,var(--panel-2),#13211c);transform:rotateY(180deg)}
+  .fc .qlabel{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-bottom:14px}
+  .fc .front .qlabel{color:var(--accent)}
+  .fc .back .qlabel{color:var(--good)}
+  .fc .qtext{font-size:19px;font-weight:600}
+  .fc .atext{font-size:16.5px;color:var(--txt)}
+  .fc .hint{position:absolute;bottom:16px;right:22px;font-size:11px;color:var(--dim)}
+  .fc-controls{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:18px}
+  .fc-controls button{background:var(--panel);border:1px solid var(--border);color:var(--txt);
+    padding:9px 18px;border-radius:9px;cursor:pointer;font-size:14px;font-family:inherit;transition:.15s}
+  .fc-controls button:hover{border-color:var(--accent);color:var(--accent-2)}
+  .fc-counter{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px;min-width:70px;text-align:center}
+  .deck-picker{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;justify-content:center}
+  .deck-picker button{background:var(--panel-2);border:1px solid var(--border);color:var(--muted);
+    padding:6px 14px;border-radius:99px;cursor:pointer;font-size:13px;font-family:inherit}
+  .deck-picker button.active{background:var(--accent-soft);color:var(--accent-2);border-color:var(--accent)}
+
+  /* Quiz */
+  .q{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;margin-bottom:16px}
+  .q .scenario{font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}
+  .q .stem{font-size:15.5px;font-weight:600;margin-bottom:14px}
+  .opt{display:block;width:100%;text-align:left;background:var(--panel-2);border:1px solid var(--border);
+    color:var(--txt);padding:12px 16px;border-radius:9px;margin-bottom:9px;cursor:pointer;font-size:14px;
+    font-family:inherit;transition:.13s}
+  .opt:hover{border-color:var(--accent)}
+  .opt.correct{background:var(--good-soft);border-color:var(--good);color:#9be0a8}
+  .opt.wrong{background:var(--bad-soft);border-color:var(--bad);color:#f3a39e}
+  .opt:disabled{cursor:default}
+  .explain{margin-top:10px;padding:13px 16px;border-radius:9px;background:var(--accent-soft);
+    border-left:3px solid var(--accent);font-size:13.5px;color:var(--accent-2);display:none}
+  .explain.show{display:block}
+  .explain b{color:var(--txt)}
+  .quiz-score{position:sticky;top:14px;z-index:5;background:var(--panel);border:1px solid var(--accent);
+    border-radius:10px;padding:10px 18px;display:inline-block;font-weight:700;margin-bottom:18px}
+
+  /* table */
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border)}
+  th{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+  tbody tr:hover{background:var(--panel-2)}
+
+  .src{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)}
+  .src:last-child{border:none}
+  .src .ic{font-size:18px}
+  .src .meta{font-size:12px;color:var(--dim)}
+
+  .footer{color:var(--dim);font-size:12.5px;text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid var(--border)}
+
+  .pill{display:inline-block;background:var(--panel-2);border:1px solid var(--border);border-radius:99px;
+    padding:3px 11px;font-size:12px;color:var(--muted);margin:3px 4px 3px 0}
+
+  @media(max-width:840px){
+    .wrap{grid-template-columns:1fr}
+    .sidebar{position:static;height:auto;flex-direction:row;flex-wrap:wrap;border-right:none;border-bottom:1px solid var(--border)}
+    .brand,.progress-mini{width:100%}
+    .progress-mini{margin-top:10px}
+    .main{padding:24px 20px 80px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- ============ SIDEBAR ============ -->
+  <nav class="sidebar">
+    <div class="brand">
+      <div class="k">Claude Certified Architect</div>
+      <div class="t">Foundations</div>
+      <div class="s">Interactive Study Guide · v0.1</div>
+    </div>
+
+    <button class="navbtn active" data-view="home"><span class="ic">🏠</span> Overview</button>
+    <button class="navbtn" data-view="principles"><span class="ic">⚖️</span> Decision Principles</button>
+    <a class="navbtn" href="deep-dives.html"><span class="ic">📂</span> Deep Dives <span class="wt">12</span></a>
+
+    <div class="navgroup">Domains</div>
+    <button class="navbtn" data-view="d1"><span class="ic">🧠</span> D1 · Orchestration <span class="wt">27%</span></button>
+    <button class="navbtn" data-view="d3"><span class="ic">⚙️</span> D3 · Claude Code <span class="wt">20%</span></button>
+    <button class="navbtn" data-view="d4"><span class="ic">✍️</span> D4 · Prompting <span class="wt">20%</span></button>
+    <button class="navbtn" data-view="d2"><span class="ic">🔧</span> D2 · Tools &amp; MCP <span class="wt">18%</span></button>
+    <button class="navbtn" data-view="d5"><span class="ic">🧩</span> D5 · Context <span class="wt">15%</span></button>
+
+    <div class="navgroup">Practice</div>
+    <button class="navbtn" data-view="flash"><span class="ic">🃏</span> Flashcards</button>
+    <button class="navbtn" data-view="quiz"><span class="ic">❓</span> Scenario Quiz</button>
+    <button class="navbtn" data-view="distractors"><span class="ic">🚫</span> Distractor Deck</button>
+    <button class="navbtn" data-view="plan"><span class="ic">🗓️</span> Study Plan</button>
+    <button class="navbtn" data-view="sources"><span class="ic">📚</span> Sources</button>
+
+    <div class="progress-mini">
+      <div class="lbl"><span>Study progress</span><span id="pctText">0%</span></div>
+      <div class="bar"><i id="progBar"></i></div>
+      <button class="resetbtn" id="resetBtn">Reset all progress</button>
+    </div>
+  </nav>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+
+    <!-- ===== HOME ===== -->
+    <section class="view active" id="view-home">
+      <div class="pagehead">
+        <div class="eyebrow">Start here</div>
+        <h1>This is a judgment exam, not a recall exam</h1>
+        <p>The sample questions reveal a consistent answer pattern. Master the six decision principles
+           and the domain-by-domain facts below — your flashcards should capture the <em>decision logic</em>
+           as much as the trivia. That's the difference between passing and not.</p>
+      </div>
+
+      <div class="hero-grid">
+        <div class="stat"><div class="n">5</div><div class="l">Domains</div></div>
+        <div class="stat"><div class="n">6</div><div class="l">Decision principles</div></div>
+        <div class="stat"><div class="n">27%</div><div class="l">Heaviest domain (D1)</div></div>
+        <div class="stat"><div class="n">3–4</div><div class="l">Week study shape</div></div>
+      </div>
+
+      <div class="card">
+        <h2>Exam weighting &amp; where to spend hours</h2>
+        <p class="lead">Study most by weight (D1), but D3 is where “silly point loss” happens — exact paths &amp; flags, easy to memorize once seen.</p>
+        <div class="weights" id="weights"></div>
+      </div>
+
+      <div class="callout key">
+        <div class="h">🎯 The one thing to internalize</div>
+        When you can’t decide between options, the tie-breakers almost always point to:
+        <b>deterministic over probabilistic</b>, <b>root cause over symptom</b>, and the
+        <b>proportionate first step</b> over the over-engineered one. Visit
+        <a href="#" data-jump="principles">Decision Principles →</a>
+      </div>
+
+      <div class="card">
+        <h2>How to use this guide</h2>
+        <ul class="clean">
+          <li>Work the <b>five domain modules</b> top-to-bottom; tick each “nail this” point as it lands. Progress saves automatically.</li>
+          <li>Drill the <b>Flashcards</b> (decision-principle deck + per-domain decks) until the <em>why</em> is reflexive.</li>
+          <li>Run the <b>Scenario Quiz</b> — every item mirrors the guide’s answer pattern, with an explanation of the trap.</li>
+          <li>Memorize the <b>Distractor Deck</b>: things that don’t exist. The exam leans on these hard.</li>
+        </ul>
+      </div>
+
+      <div class="callout note">
+        <div class="h">ℹ️ Authority note</div>
+        Where this guide names an exact SDK identifier, CLI flag, or frontmatter key, treat the
+        <b>exam guide as authoritative for the test</b> and the <b>live docs as authoritative for reality</b>.
+        Reconcile any conflict by testing.
+      </div>
+    </section>
+
+    <!-- ===== PRINCIPLES ===== -->
+    <section class="view" id="view-principles">
+      <div class="pagehead">
+        <div class="eyebrow">The answer key behind the answer key</div>
+        <h1>The Six Decision Principles</h1>
+        <p>When two options both look defensible, these tie-breakers resolve the exam. Make a dedicated flashcard deck out of exactly these.</p>
+      </div>
+      <div id="principleList"></div>
+
+      <div class="callout warn">
+        <div class="h">🚫 Repeatedly rejected by the exam</div>
+        “Have the model rate its confidence 1–10” and “escalate on negative sentiment.”
+        <b>Self-reported confidence and sentiment are unreliable proxies</b> — never the right answer.
+      </div>
+    </section>
+
+    <!-- ===== D1 ===== -->
+    <section class="view" id="view-d1">
+      <div class="pagehead">
+        <div class="eyebrow">Domain 1 · 27% · Agent SDK</div>
+        <h1>Agentic Architecture &amp; Orchestration</h1>
+        <p>The heaviest domain and the biggest conceptual lift. Maps to Customer Support Agent, Multi-Agent Research, and Developer Productivity scenarios.</p>
+      </div>
+
+      <div class="card">
+        <h2>Read / do</h2>
+        <ul class="clean">
+          <li>Claude Agent SDK overview + TS or Python SDK reference. Focus: the agentic loop, <code>stop_reason</code> (<code>"tool_use"</code> vs <code>"end_turn"</code>), appending tool results to history, spawning subagents via the <b>Task</b> tool, <code>AgentDefinition</code>, hooks (e.g. <code>PostToolUse</code>), session resumption / <code>fork_session</code>.</li>
+          <li>“Building Effective Agents” for the <em>why</em>: workflows vs. agents, prompt chaining vs. dynamic decomposition, coordinator / orchestrator-worker patterns.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Nail these exam points <span class="tag acc">tick as mastered</span></h2>
+        <div data-checklist="d1"></div>
+      </div>
+
+      <div class="callout key">
+        <div class="h">📂 Deep dives — code &amp; demos</div>
+        <a href="stop-reason.html">The agentic loop &amp; stop_reason →</a> ·
+        <a href="subagents.html">Subagents &amp; coordinator pattern →</a> ·
+        <a href="hooks-gates.html">Deterministic gates &amp; hooks →</a>
+      </div>
+
+      <div class="callout note">
+        <div class="h">🧪 Confidence calibration</div>
+        Concepts are solid &amp; stable. The <b>exact SDK identifiers</b> — <code>AgentDefinition</code> shape,
+        <code>fork_session</code>, the <code>allowedTools ⊇ "Task"</code> requirement, hook timing — are what to
+        verify in current SDK docs. Don’t trust recall on signatures.
+      </div>
+    </section>
+
+    <!-- ===== D3 ===== -->
+    <section class="view" id="view-d3">
+      <div class="pagehead">
+        <div class="eyebrow">Domain 3 · 20% · Claude Code</div>
+        <h1>Claude Code Configuration &amp; Workflows</h1>
+        <p>Mostly memorizable facts — the highest ROI per hour. Build dense flashcards on the “where does this file go” set.</p>
+      </div>
+
+      <div class="card">
+        <h2>The “where does this file go” map</h2>
+        <table>
+          <thead><tr><th>Thing</th><th>Location</th><th>Scope</th></tr></thead>
+          <tbody>
+            <tr><td>User memory</td><td><code>~/.claude/CLAUDE.md</code></td><td><span class="tag bad">NOT version-controlled</span></td></tr>
+            <tr><td>Project memory</td><td><code>.claude/CLAUDE.md</code> or root</td><td><span class="tag good">Shared</span></td></tr>
+            <tr><td>Path-specific rules</td><td><code>.claude/rules/*.md</code> + YAML <code>paths</code> glob</td><td>Loads only on matching files</td></tr>
+            <tr><td>Team slash command</td><td><code>.claude/commands/</code></td><td><span class="tag good">Shared</span></td></tr>
+            <tr><td>Personal slash command</td><td><code>~/.claude/commands/</code></td><td>Personal</td></tr>
+            <tr><td>Skill</td><td><code>.claude/skills/</code> + SKILL.md</td><td>On-demand</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Nail these exam points <span class="tag acc">tick as mastered</span></h2>
+        <div data-checklist="d3"></div>
+      </div>
+
+      <div class="callout warn">
+        <div class="h">⚠️ Verify the specifics here</div>
+        Exact flag names and frontmatter keys are <b>version-sensitive</b>. You know the feature shapes —
+        the docs map is your friend, and sample questions Q4, Q6, Q10 are good gut checks.
+      </div>
+
+      <div class="callout key">
+        <div class="h">📂 Deep dives — code &amp; demos</div>
+        <a href="claude-md.html">CLAUDE.md, rules, commands &amp; skills →</a> ·
+        <a href="claude-code-ci.html">Claude Code in CI / headless →</a>
+      </div>
+    </section>
+
+    <!-- ===== D4 ===== -->
+    <section class="view" id="view-d4">
+      <div class="pagehead">
+        <div class="eyebrow">Domain 4 · 20% · Claude API</div>
+        <h1>Prompt Engineering &amp; Structured Output</h1>
+        <p>Stable API ground — high confidence. Maps to CI/CD and Structured Data Extraction scenarios.</p>
+      </div>
+
+      <div class="card">
+        <h2>Nail these exam points <span class="tag acc">tick as mastered</span></h2>
+        <div data-checklist="d4"></div>
+      </div>
+
+      <div class="callout key">
+        <div class="h">📦 Batch vs. Sync — memorize the line</div>
+        <b>Message Batches API:</b> 50% cheaper · up to 24h · <b>no latency SLA</b> · <b>no multi-turn tool calling</b> ·
+        <code>custom_id</code> to correlate. → Overnight / weekly work.<br>
+        <b>Sync API:</b> blocking pre-merge checks where you need the answer now.
+      </div>
+
+      <div class="callout tip">
+        <div class="h">✅ The schema-validity nuance</div>
+        <code>tool_use</code> + JSON schema eliminates <b>syntax</b> errors — <b>not semantic</b> ones
+        (totals that don’t sum). Retry-with-error-feedback fixes structural errors, but <b>cannot</b>
+        conjure info that’s simply absent from the source.
+      </div>
+
+      <div class="callout key">
+        <div class="h">📂 Deep dives — code &amp; demos</div>
+        <a href="structured-output.html">Structured output &amp; extraction →</a> ·
+        <a href="batches.html">Message Batches API →</a> ·
+        <a href="prompt-engineering.html">Prompt engineering for judgment →</a>
+      </div>
+    </section>
+
+    <!-- ===== D2 ===== -->
+    <section class="view" id="view-d2">
+      <div class="pagehead">
+        <div class="eyebrow">Domain 2 · 18% · MCP + Agent SDK</div>
+        <h1>Tool Design &amp; MCP Integration</h1>
+        <p>Maps to Support Agent and Developer Productivity scenarios.</p>
+      </div>
+
+      <div class="card">
+        <h2>Nail these exam points <span class="tag acc">tick as mastered</span></h2>
+        <div data-checklist="d2"></div>
+      </div>
+
+      <div class="callout key">
+        <div class="h">🔧 Built-in tool reflexes</div>
+        <b>Grep</b> = content search · <b>Glob</b> = path patterns · <b>Edit</b> = unique-match edits,
+        with <b>Read + Write</b> fallback when matches aren’t unique.
+      </div>
+
+      <div class="callout note">
+        <div class="h">ℹ️ Field-name caveat</div>
+        Exact error-field names (<code>errorCategory</code>, <code>isRetryable</code>, <code>retriable</code>)
+        appear to be the guide’s <b>illustrative convention</b> — memorize for the exam, but don’t assume
+        they’re mandated spec fields.
+      </div>
+
+      <div class="callout key">
+        <div class="h">📂 Deep dives — code &amp; demos</div>
+        <a href="tool-design.html">Tool design: descriptions, tool_choice &amp; errors →</a> ·
+        <a href="mcp.html">MCP integration →</a>
+      </div>
+    </section>
+
+    <!-- ===== D5 ===== -->
+    <section class="view" id="view-d5">
+      <div class="pagehead">
+        <div class="eyebrow">Domain 5 · 15% · Cross-cutting</div>
+        <h1>Context Management &amp; Reliability</h1>
+        <p>Rarely standalone — it threads through the support, research, and extraction scenarios.</p>
+      </div>
+
+      <div class="card">
+        <h2>Nail these exam points <span class="tag acc">tick as mastered</span></h2>
+        <div data-checklist="d5"></div>
+      </div>
+
+      <div class="callout key">
+        <div class="h">🧭 Escalate when… (not when…)</div>
+        <span class="tag good">DO</span> honor explicit human requests immediately · escalate on policy gaps /
+        ambiguity · escalate on inability to progress · ask for more identifiers on multiple matches.<br>
+        <span class="tag bad">DON’T</span> escalate on sentiment · don’t escalate on self-reported confidence · don’t guess on ambiguous identity.
+      </div>
+
+      <div class="callout key">
+        <div class="h">📂 Deep dives — code &amp; demos</div>
+        <a href="context-management.html">Context management →</a> ·
+        <a href="reliability.html">Escalation, errors &amp; provenance →</a>
+      </div>
+    </section>
+
+    <!-- ===== FLASHCARDS ===== -->
+    <section class="view" id="view-flash">
+      <div class="pagehead">
+        <div class="eyebrow">Practice</div>
+        <h1>Flashcards</h1>
+        <p>Click the card (or press <kbd>Space</kbd>) to flip. <kbd>←</kbd> / <kbd>→</kbd> to navigate. Decks map to the decision principles and each domain.</p>
+      </div>
+      <div class="deck-picker" id="deckPicker"></div>
+      <div class="fc-stage">
+        <div class="fc" id="fc">
+          <div class="face front">
+            <div class="qlabel">Scenario / Prompt</div>
+            <div class="qtext" id="fcQ"></div>
+            <div class="hint">click to flip</div>
+          </div>
+          <div class="face back">
+            <div class="qlabel">Best action / Answer</div>
+            <div class="atext" id="fcA"></div>
+            <div class="hint">click to flip back</div>
+          </div>
+        </div>
+      </div>
+      <div class="fc-controls">
+        <button id="fcPrev">← Prev</button>
+        <span class="fc-counter" id="fcCount"></span>
+        <button id="fcNext">Next →</button>
+      </div>
+    </section>
+
+    <!-- ===== QUIZ ===== -->
+    <section class="view" id="view-quiz">
+      <div class="pagehead">
+        <div class="eyebrow">Practice</div>
+        <h1>Scenario Quiz</h1>
+        <p>Each item mirrors the exam’s answer pattern. Pick an option to see whether it holds — and <em>why the distractors fail</em>.</p>
+      </div>
+      <div class="quiz-score" id="quizScore">Score: 0 / 0</div>
+      <div id="quizList"></div>
+    </section>
+
+    <!-- ===== DISTRACTORS ===== -->
+    <section class="view" id="view-distractors">
+      <div class="pagehead">
+        <div class="eyebrow">Practice</div>
+        <h1>Distractor Deck — “what doesn’t exist”</h1>
+        <p>The exam leans on these hard. If an option references one of these, it’s almost certainly the trap.</p>
+      </div>
+      <div class="card" id="distractorList"></div>
+    </section>
+
+    <!-- ===== PLAN ===== -->
+    <section class="view" id="view-plan">
+      <div class="pagehead">
+        <div class="eyebrow">Sequence</div>
+        <h1>Suggested 3–4 Week Shape</h1>
+        <p>Start on stable ground (D4/D5), then climb the conceptual lift (D1/D2), then hammer the memorizable details (D3), then integrate &amp; test.</p>
+      </div>
+      <div id="planList"></div>
+      <div class="card">
+        <h2>How to build flashcards that map to this exam</h2>
+        <ul class="clean">
+          <li>One card per task-statement “Skills in” bullet, phrased as <b>scenario → best action</b>.</li>
+          <li>A dedicated deck for the <b>six decision principles</b>.</li>
+          <li>A deck of <b>“what doesn’t exist / is the distractor”</b> facts.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===== SOURCES ===== -->
+    <section class="view" id="view-sources">
+      <div class="pagehead">
+        <div class="eyebrow">Read these, not blog approximations</div>
+        <h1>Canonical Sources</h1>
+        <p>Anthropic publishes docs maps — treat them as the index. Paths shift; if a deep link 404s, start from the map.</p>
+      </div>
+      <div class="card" id="sourceList"></div>
+      <div class="callout note">
+        <div class="h">🤝 Honesty note from the plan</div>
+        These maps are the right entry points, but the SDK/CLI surface evolves. Where this plan names a
+        specific flag or frontmatter key, treat the guide as exam-authoritative and the live docs as
+        reality-authoritative; reconcile any conflict by testing.
+      </div>
+    </section>
+
+    <div class="footer">
+      Built from the official exam guide v0.1 · Interactive study guide · Progress stored locally in your browser.
+    </div>
+  </main>
+</div>
+
+<script>
+/* ============================ DATA ============================ */
+const WEIGHTS = [
+  {name:"D1 · Agentic Architecture & Orchestration", pct:27, conf:"Concepts solid; verify exact SDK API"},
+  {name:"D3 · Claude Code Configuration & Workflows", pct:20, conf:"Verify CLI/config specifics in docs"},
+  {name:"D4 · Prompt Engineering & Structured Output", pct:20, conf:"High — stable API ground"},
+  {name:"D2 · Tool Design & MCP Integration", pct:18, conf:"Good; some field shapes are conventions"},
+  {name:"D5 · Context Management & Reliability", pct:15, conf:"High on fundamentals"},
+];
+
+const PRINCIPLES = [
+  {t:"Deterministic over probabilistic for critical logic",
+   d:"When a business rule MUST hold (verify customer before refund, block refunds over a threshold), the answer is a programmatic gate / hook — prompt-based compliance has a non-zero failure rate.",
+   y:"programmatic gate / hook", n:"“improve the prompt” / “add few-shot examples”"},
+  {t:"Fix the root cause, not the symptom",
+   d:"If the coordinator decomposed the topic badly, the bug is the coordinator — not the subagents that executed their (wrong) assignments correctly.",
+   y:"fix the coordinator’s decomposition", n:"patch the subagents"},
+  {t:"Proportionate first step beats over-engineering",
+   d:"When the immediate problem is inadequate tool descriptions, expanding the descriptions wins.",
+   y:"expand the tool descriptions", n:"build a routing classifier / train a model / consolidate tools"},
+  {t:"Match the tool/API to the actual problem",
+   d:"Batch API for latency-tolerant overnight work; sync API for blocking pre-merge checks. A bigger context window does NOT fix attention dilution — splitting passes does.",
+   y:"right API for the latency profile", n:"bigger context window to fix attention"},
+  {t:"Least privilege / scoped tools",
+   d:"Give each agent only the tools its role needs; too many tools degrades selection reliability.",
+   y:"scope tools per role", n:"hand every agent every tool"},
+  {t:"Self-reported confidence & sentiment are unreliable proxies",
+   d:"The exam repeatedly rejects “have the model rate its confidence 1–10” and “escalate on negative sentiment.”",
+   y:"calibrated, field-level confidence on labeled sets", n:"model self-rated confidence / sentiment triggers"},
+];
+
+const CHECKLISTS = {
+  d1:[
+    "Loop control is driven by stop_reason — NOT by parsing assistant text, NOT by arbitrary iteration caps (both named anti-patterns).",
+    "Hub-and-spoke: subagents have isolated context and do NOT inherit the coordinator's history — context must be passed explicitly in the prompt.",
+    "Coordinator should dynamically select subagents, not always run the full pipeline. Narrow decomposition → incomplete coverage (the “creative industries = only visual arts” trap).",
+    "Parallel subagents = multiple Task calls in a single response.",
+    "Programmatic enforcement (hooks / prerequisite gates) for deterministic compliance vs. prompt guidance for probabilistic.",
+    "Plan mode for architectural / multi-file / multiple-valid-approach work; direct execution for well-scoped single changes.",
+  ],
+  d2:[
+    "Tool descriptions are the primary tool-selection mechanism. Minimal descriptions → misrouting.",
+    "First fix for two confusable tools = better descriptions (inputs, example queries, edge cases, when-vs-when-not) before few-shot, routing layers, or consolidation.",
+    "Too many tools (18 vs 4–5) degrades selection — scope tools per agent role.",
+    "Structured errors: distinguish transient / validation / business / permission; retryable vs not; never collapse to generic “operation failed.”",
+    "Distinguish access failure vs. a valid empty result.",
+    "Built-ins: Grep = content, Glob = paths, Edit = unique-match (Read+Write fallback when matches aren't unique).",
+    "Prefer existing community MCP servers for standard integrations (e.g. Jira); custom only for team-specific needs.",
+    "MCP resources = content catalogs that reduce exploratory calls; use isError pattern; scope servers.",
+    "Claude Code MCP: .mcp.json (project) vs ~/.claude.json (user); ${ENV_VAR} expansion for secrets.",
+  ],
+  d3:[
+    "CLAUDE.md hierarchy: user (~/.claude/CLAUDE.md) is NOT shared via version control — the classic “new teammate didn't get the rules” bug.",
+    "@import to keep CLAUDE.md modular; .claude/rules/ for topic-split rules.",
+    "Path-specific rules: .claude/rules/ files with YAML frontmatter `paths` globs load only when editing matching files — beats per-directory CLAUDE.md for conventions spanning many dirs (e.g. **/*.test.tsx).",
+    "Slash commands: .claude/commands/ (project, shared) vs ~/.claude/commands/ (personal). A team /review → project dir.",
+    "Skills: .claude/skills/ with SKILL.md frontmatter — context: fork (isolate verbose output), allowed-tools, argument-hint. Skill = on-demand; CLAUDE.md = always-loaded.",
+    "CI: -p / --print for non-interactive (fixes the “job hangs” question).",
+    "CI: --output-format json + --json-schema for parseable findings; an independent review instance beats self-review.",
+    "/memory shows which memory files loaded; /compact reduces context; --resume; Explore subagent for verbose discovery.",
+  ],
+  d4:[
+    "Explicit criteria beat vague instructions: “flag only when claimed behavior contradicts actual code” >> “be conservative” / “only high-confidence.”",
+    "Few-shot is the go-to for consistent formatting and ambiguous-case judgment; 2–4 targeted examples that show reasoning for the choice.",
+    "tool_use + JSON schema = reliable schema-valid output (eliminates SYNTAX errors, NOT semantic ones like totals that don't sum).",
+    "Make uncertain fields nullable/optional so the model returns null instead of fabricating. Use enums with “other” + detail for extensibility.",
+    "Retry-with-error-feedback works for format/structural errors; does NOT work when the info is simply absent from the source.",
+    "Message Batches API: 50% cheaper, up to 24h, no latency SLA, no multi-turn tool calling, custom_id to correlate. Batch = overnight; sync = blocking pre-merge.",
+    "Multi-pass / independent-instance review beats single-pass on big PRs (attention dilution); a bigger context window does NOT fix this.",
+  ],
+  d5:[
+    "Lost-in-the-middle: put key findings at the start/end; section headers for the middle.",
+    "Don't summarize away numbers, dates, statuses — extract them into a persistent “case facts” block outside summarized history.",
+    "Trim verbose tool outputs to relevant fields before they accumulate.",
+    "Escalation: honor explicit human requests immediately; escalate on policy gaps / ambiguity / inability to progress — NOT on sentiment or self-reported confidence. Ask for more identifiers on multiple matches.",
+    "Error propagation: structured context (failure type, attempted query, partial results, alternatives) up to the coordinator; local recovery for transient failures; never silently suppress, never kill the whole workflow on one failure.",
+    "Provenance: preserve claim→source mappings through synthesis; annotate conflicts with attribution; include dates so temporal differences aren't read as contradictions.",
+    "Human review: field-level confidence calibrated on labeled sets; stratified sampling; check accuracy by document type and field — aggregate 97% can hide a bad segment.",
+  ],
+};
+
+const DECKS = {
+  principles:{name:"⚖️ Decision Principles", cards:[
+    {q:"A refund agent MUST verify the customer and block refunds over $X. How do you enforce it?",a:"A programmatic gate / hook — deterministic. Prompt-based compliance has a non-zero failure rate. NOT “improve the prompt.”"},
+    {q:"A multi-agent research run missed whole sub-topics. Where's the bug?",a:"The coordinator's decomposition — fix the root cause. The subagents executed their (wrong) assignments correctly."},
+    {q:"Two tools keep getting confused. First fix?",a:"Expand the tool descriptions (proportionate first step) — before routing classifiers, few-shot, or consolidation."},
+    {q:"Overnight bulk job vs. blocking pre-merge check — which API each?",a:"Batch API (latency-tolerant, 50% cheaper, ≤24h) overnight; sync API for the blocking pre-merge check."},
+    {q:"Attention is diluting on a huge PR review. Fix?",a:"Split into multiple passes / independent instances. A bigger context window does NOT fix attention dilution."},
+    {q:"An agent selects the wrong tool among 18. Structural fix?",a:"Least privilege — scope each agent to only the tools its role needs. Too many tools degrades selection."},
+    {q:"Proposal: “have the model rate its confidence 1–10” / “escalate on negative sentiment.”",a:"Reject both. Self-reported confidence and sentiment are unreliable proxies."},
+  ]},
+  d1:{name:"🧠 D1 Orchestration", cards:[
+    {q:"What drives the agentic loop's continuation?",a:"stop_reason (\"tool_use\" vs \"end_turn\") — NOT parsing assistant text, NOT arbitrary iteration caps."},
+    {q:"Do subagents inherit the coordinator's conversation history?",a:"No. Isolated context — context must be passed explicitly in the subagent's prompt (hub-and-spoke)."},
+    {q:"How do you run subagents in parallel?",a:"Multiple Task tool calls in a single response."},
+    {q:"Should the coordinator always run the full pipeline of subagents?",a:"No — dynamically select. Always-full or narrow decomposition causes incomplete coverage."},
+    {q:"Plan mode vs. direct execution — when each?",a:"Plan mode for architectural / multi-file / multiple-valid-approach work; direct execution for well-scoped single changes."},
+    {q:"Which SDK identifiers should you double-check against live docs?",a:"AgentDefinition shape, fork_session, allowedTools ⊇ \"Task\", hook timing (e.g. PostToolUse)."},
+  ]},
+  d2:{name:"🔧 D2 Tools & MCP", cards:[
+    {q:"What is the primary tool-SELECTION mechanism?",a:"The tool descriptions. Minimal descriptions → misrouting."},
+    {q:"Grep vs Glob vs Edit?",a:"Grep = content search; Glob = path patterns; Edit = unique-match edits (Read+Write fallback when not unique)."},
+    {q:"What's an MCP resource for?",a:"Content catalogs that reduce exploratory tool calls."},
+    {q:"Error category that's retryable vs not — name the four buckets.",a:"Transient / validation / business / permission. Never collapse to generic “operation failed.” Distinguish access failure vs. valid empty result."},
+    {q:"Need a Jira integration — build custom or reuse?",a:"Prefer existing community MCP servers for standard integrations; custom only for team-specific needs."},
+    {q:"Where do MCP project vs user configs live?",a:".mcp.json (project) vs ~/.claude.json (user); ${ENV_VAR} expansion for secrets."},
+  ]},
+  d3:{name:"⚙️ D3 Claude Code", cards:[
+    {q:"New teammate didn't get the rules. Why?",a:"The rules were in user memory (~/.claude/CLAUDE.md), which is NOT version-controlled. Put shared rules in project .claude/CLAUDE.md."},
+    {q:"Conventions span many dirs (e.g. all **/*.test.tsx). Best mechanism?",a:".claude/rules/ file with YAML frontmatter `paths` glob — loads only on matching files. Beats per-directory CLAUDE.md."},
+    {q:"Team /review command — which directory?",a:"Project: .claude/commands/ (shared). Personal commands go in ~/.claude/commands/."},
+    {q:"Skill vs CLAUDE.md — loading model?",a:"Skill = on-demand (.claude/skills/ + SKILL.md, context: fork to isolate verbose output). CLAUDE.md = always-loaded."},
+    {q:"A CI job using Claude Code hangs. Fix?",a:"Run non-interactive with -p / --print."},
+    {q:"Need machine-parseable CI findings + trustworthy review?",a:"--output-format json + --json-schema; use an independent review instance, not self-review."},
+  ]},
+  d4:{name:"✍️ D4 Prompting", cards:[
+    {q:"Reviewer over-flags. Better instruction?",a:"Explicit criteria: “flag only when claimed behavior contradicts actual code.” Vague “be conservative / only high-confidence” doesn't improve precision."},
+    {q:"Best lever for consistent formatting & ambiguous-case judgment?",a:"Few-shot — 2–4 targeted examples that show the reasoning for the choice."},
+    {q:"Does tool_use + JSON schema eliminate ALL errors?",a:"Only SYNTAX errors. Semantic errors (totals that don't sum) remain. Make uncertain fields nullable; use enums with “other.”"},
+    {q:"When does retry-with-error-feedback NOT help?",a:"When the info is simply absent from the source. It only fixes format/structural errors."},
+    {q:"Message Batches API — the five facts.",a:"50% cheaper · up to 24h · no latency SLA · no multi-turn tool calling · custom_id to correlate."},
+    {q:"Huge PR, attention diluting. Fix vs non-fix?",a:"Fix: multi-pass / independent-instance review. Non-fix: a bigger context window."},
+  ]},
+  d5:{name:"🧩 D5 Context", cards:[
+    {q:"Where do key findings go to beat lost-in-the-middle?",a:"Start and end; use section headers for the middle."},
+    {q:"What must you NEVER summarize away?",a:"Numbers, dates, statuses — extract into a persistent “case facts” block outside summarized history."},
+    {q:"When should an agent escalate?",a:"Explicit human request (immediately), policy gaps/ambiguity, inability to progress. NOT sentiment or self-rated confidence."},
+    {q:"Multiple customer matches — guess or ask?",a:"Ask for more identifiers. Never guess on ambiguous identity."},
+    {q:"One subagent fails. What happens to the workflow?",a:"Local recovery for transient failures; propagate structured context up; never silently suppress, never kill the whole workflow."},
+    {q:"Aggregate extraction accuracy is 97%. Trust it?",a:"No — check by document type and field; stratified sampling. Aggregate can hide a bad segment."},
+  ]},
+};
+
+const QUIZ = [
+  {s:"Customer Support Agent",
+   stem:"Refund policy says: never refund a customer who hasn't been identity-verified, and never refund above $500. The agent occasionally violates this. What's the fix?",
+   opts:[
+     {t:"Add a programmatic prerequisite gate / hook that blocks the refund tool unless verification passed and amount ≤ $500.", ok:true},
+     {t:"Strengthen the system prompt with firmer language about always verifying first.", ok:false},
+     {t:"Add few-shot examples of correct refund handling.", ok:false},
+     {t:"Have the model rate its confidence before each refund.", ok:false},
+   ],
+   why:"Critical business rules need <b>deterministic enforcement</b>. Prompt/few-shot compliance has a non-zero failure rate; self-rated confidence is an unreliable proxy."},
+  {s:"Multi-Agent Research",
+   stem:"A research coordinator dispatched subagents but the final report missed entire sub-topics (e.g. “creative industries” only covered visual arts). Where's the bug?",
+   opts:[
+     {t:"The coordinator's topic decomposition was too narrow — fix the decomposition.", ok:true},
+     {t:"The subagents ignored their instructions — add stricter subagent prompts.", ok:false},
+     {t:"The context window was too small — switch to a larger-context model.", ok:false},
+     {t:"Run more subagents in parallel.", ok:false},
+   ],
+   why:"<b>Root cause over symptom.</b> The subagents executed their (wrong) assignments correctly; the coordinator handed them an incomplete breakdown."},
+  {s:"Developer Productivity",
+   stem:"Two MCP tools — `search_tickets` and `search_docs` — keep getting confused for each other. What's the right FIRST step?",
+   opts:[
+     {t:"Expand each tool's description: inputs, example queries, edge cases, when-to-use vs when-not.", ok:true},
+     {t:"Build a routing classifier model in front of the tools.", ok:false},
+     {t:"Consolidate them into one mega-tool.", ok:false},
+     {t:"Train a fine-tuned model on tool selection.", ok:false},
+   ],
+   why:"<b>Proportionate first step.</b> Tool descriptions are the primary selection mechanism — fix those before reaching for classifiers, consolidation, or training."},
+  {s:"CI/CD",
+   stem:"You need to run nightly bulk classification of 50k support tickets, cost-sensitive, no rush. Which API?",
+   opts:[
+     {t:"Message Batches API — 50% cheaper, up to 24h, no latency SLA.", ok:true},
+     {t:"Synchronous Messages API in a tight loop.", ok:false},
+     {t:"Batches API, relying on multi-turn tool calling per ticket.", ok:false},
+     {t:"Sync API with a much larger context window to do all 50k at once.", ok:false},
+   ],
+   why:"<b>Match the API to the latency profile.</b> Overnight + cost-sensitive = Batches. Note Batches has <b>no multi-turn tool calling</b>, and a bigger context window isn't the lever here."},
+  {s:"CI/CD",
+   stem:"Your Claude Code review job in CI hangs forever and never returns. Most likely fix?",
+   opts:[
+     {t:"Run it non-interactively with -p / --print.", ok:true},
+     {t:"Set a CLAUDE_HEADLESS=1 environment variable.", ok:false},
+     {t:"Pass the --batch flag to the CLI.", ok:false},
+     {t:"Increase the CI runner's timeout.", ok:false},
+   ],
+   why:"The job hangs waiting for interactive input; <code>-p</code>/<code>--print</code> fixes it. <code>CLAUDE_HEADLESS</code> and <code>--batch</code> <b>don't exist</b> — classic distractors."},
+  {s:"Claude Code config",
+   stem:"A new teammate cloned the repo but Claude isn't following the team's conventions that work fine on your machine. Why?",
+   opts:[
+     {t:"The rules live in your user memory (~/.claude/CLAUDE.md), which isn't version-controlled.", ok:true},
+     {t:"They need to run /memory to load the rules.", ok:false},
+     {t:"The project CLAUDE.md is too long and got truncated.", ok:false},
+     {t:"They're missing a .claude/config.json commands array.", ok:false},
+   ],
+   why:"User-level memory is <b>not shared via VCS</b>. Move shared conventions to project <code>.claude/CLAUDE.md</code>. (<code>.claude/config.json</code> commands array is a non-existent distractor.)"},
+  {s:"Claude Code config",
+   stem:"You want a convention enforced only when editing test files (**/*.test.tsx) across many directories. Best mechanism?",
+   opts:[
+     {t:"A .claude/rules/ file with YAML frontmatter `paths` glob matching **/*.test.tsx.", ok:true},
+     {t:"A per-directory CLAUDE.md in every folder containing tests.", ok:false},
+     {t:"Put it in the always-loaded root CLAUDE.md.", ok:false},
+     {t:"A slash command teammates run before editing tests.", ok:false},
+   ],
+   why:"Path-specific rules load <b>only when matching files are touched</b> — cleaner and more targeted than scattering per-directory CLAUDE.md files or bloating the always-loaded memory."},
+  {s:"Structured Data Extraction",
+   stem:"Your extractor returns valid JSON but occasionally invents a customer email that isn't in the source document. Best mitigation?",
+   opts:[
+     {t:"Make the email field nullable/optional so the model returns null when it's absent.", ok:true},
+     {t:"Add tool_use with a JSON schema to guarantee correctness.", ok:false},
+     {t:"Retry with error feedback until it produces an email.", ok:false},
+     {t:"Tell the model to “be accurate and don't hallucinate.”", ok:false},
+   ],
+   why:"Schema/tool_use fixes <b>syntax, not semantics</b>; retry can't conjure absent info; vague instructions don't calibrate. <b>Nullable fields</b> let the model say “not present.”"},
+  {s:"Multi-Agent Research",
+   stem:"During synthesis, two sources disagree on a statistic. What should the agent do?",
+   opts:[
+     {t:"Preserve both with source attribution and note the conflict, including dates.", ok:true},
+     {t:"Pick the source that sounds more authoritative.", ok:false},
+     {t:"Average the two numbers.", ok:false},
+     {t:"Drop the statistic entirely to avoid being wrong.", ok:false},
+   ],
+   why:"<b>Provenance.</b> Keep claim→source mappings through synthesis and annotate conflicts with attribution; include dates so a temporal difference isn't misread as a contradiction."},
+  {s:"Context Management",
+   stem:"A long support session is being summarized to save context. What's the danger and the fix?",
+   opts:[
+     {t:"Extract numbers/dates/statuses into a persistent “case facts” block kept outside the summarized history.", ok:true},
+     {t:"Switch to a larger-context model so nothing needs summarizing.", ok:false},
+     {t:"Summarize aggressively and trust the model to re-derive specifics.", ok:false},
+     {t:"Escalate to a human whenever the session gets long.", ok:false},
+   ],
+   why:"Summarization tends to <b>drop hard facts</b> (numbers, dates, statuses). Pin them in a durable facts block. A bigger window delays — not solves — the loss, and length alone isn't an escalation trigger."},
+];
+
+const DISTRACTORS = [
+  ["No <code>CLAUDE_HEADLESS</code> env var","Use <code>-p</code> / <code>--print</code> for non-interactive runs."],
+  ["No <code>--batch</code> CLI flag","Batching is the Message Batches <em>API</em>, not a Claude Code flag."],
+  ["No <code>.claude/config.json</code> commands array","Slash commands are files in <code>.claude/commands/</code>."],
+  ["Sentiment ≠ complexity","Never escalate on negative sentiment; escalate on policy gaps / ambiguity / inability to progress."],
+  ["Self-rated confidence is uncalibrated","“Rate your confidence 1–10” is repeatedly the wrong answer. Use field-level confidence calibrated on labeled sets."],
+  ["Bigger context ≠ better attention","Attention dilution is fixed by splitting into passes / independent instances, not a larger window."],
+  ["Schema validity ≠ semantic correctness","<code>tool_use</code> + JSON schema kills syntax errors only; totals can still fail to sum."],
+  ["Retry can't invent missing data","Retry-with-feedback fixes structure, not information absent from the source."],
+  ["Batches has no multi-turn tool calling & no latency SLA","Don't pick Batches for blocking pre-merge checks or tool-loop work."],
+  ["More tools ≠ more capable","18 tools vs 4–5 degrades selection — scope tools per role (least privilege)."],
+];
+
+const PLAN = [
+  {w:"Week 1", t:"Foundations + D4/D5 (the stable stuff)", d:"Read API tool_use, structured outputs, batches, prompt engineering. Do Exercise 3. Build confidence on ground that won't shift."},
+  {w:"Week 2", t:"D1 + D2 (Agent SDK + MCP)", d:"Read the Agent SDK docs and “Building Effective Agents.” Do Exercises 1 and 4. The heaviest conceptual lift."},
+  {w:"Week 3", t:"D3 (Claude Code)", d:"Read the Claude Code docs end-to-end; do Exercise 2. Hammer flashcards on file paths, scopes, flags, frontmatter."},
+  {w:"Week 4", t:"Integrate + test", d:"Run Preporato practice exams. For every miss, trace it to a domain task statement and the decision principle it tests. Re-read only where misses cluster."},
+];
+
+const SOURCES = [
+  ["🗺️","Claude API & general docs map","https://docs.claude.com/en/docs_site_map.md","The index — start here if a deep link 404s."],
+  ["🗺️","Claude Code docs map","https://docs.anthropic.com/en/docs/claude-code/claude_code_docs_map.md","Index for all Claude Code docs."],
+  ["📘","Claude API overview","https://docs.claude.com/en/api/overview","Tool use, structured output, batches."],
+  ["📘","Claude Code overview","https://docs.claude.com/en/docs/claude-code/overview","Memory, settings, commands, skills, CI."],
+  ["🔌","MCP spec","https://modelcontextprotocol.io","Tools vs resources, isError, server scoping."],
+  ["📝","Engineering — “Building Effective Agents”","https://www.anthropic.com/engineering","The why: workflows vs agents, orchestrator-worker."],
+  ["📝","Engineering — “Claude Code best practices”","https://www.anthropic.com/engineering","Search the title."],
+  ["💻","anthropic-cookbook & anthropic/courses (GitHub)","https://github.com/anthropics/anthropic-cookbook","Runnable tool-use, agent, extraction notebooks."],
+];
+
+/* ============================ RENDER ============================ */
+const $ = s=>document.querySelector(s);
+const $$ = s=>[...document.querySelectorAll(s)];
+
+// weights
+$("#weights").innerHTML = WEIGHTS.map(w=>`
+  <div class="wrow">
+    <div><div class="name">${w.name.replace(/^(D\d)/,'<b>$1</b>')}</div><div class="conf">${w.conf}</div></div>
+    <div class="wbar"><i style="width:${w.pct/27*100}%"></i></div>
+    <div class="pct">${w.pct}%</div>
+  </div>`).join("");
+
+// principles
+$("#principleList").innerHTML = PRINCIPLES.map((p,i)=>`
+  <div class="principle">
+    <div class="num">${i+1}</div>
+    <div class="body">
+      <h3>${p.t}</h3>
+      <p>${p.d}</p>
+      <div class="vs"><span class="y">✔ ${p.y}</span> &nbsp;·&nbsp; <span class="n">✘ ${p.n}</span></div>
+    </div>
+  </div>`).join("");
+
+// checklists (with persistence)
+function renderChecklist(key){
+  const saved = JSON.parse(localStorage.getItem("cca_check")||"{}");
+  const host = document.querySelector(`[data-checklist="${key}"]`);
+  host.innerHTML = CHECKLISTS[key].map((txt,i)=>{
+    const id = `${key}_${i}`;
+    const on = saved[id] ? "checked":"";
+    return `<label class="check"><input type="checkbox" data-id="${id}" ${on}><span>${txt}</span></label>`;
+  }).join("");
+}
+Object.keys(CHECKLISTS).forEach(renderChecklist);
+
+document.addEventListener("change",e=>{
+  if(e.target.matches('input[type=checkbox][data-id]')){
+    const saved = JSON.parse(localStorage.getItem("cca_check")||"{}");
+    saved[e.target.dataset.id]=e.target.checked;
+    localStorage.setItem("cca_check",JSON.stringify(saved));
+    updateProgress();
+  }
+});
+
+function updateProgress(){
+  const total = Object.values(CHECKLISTS).reduce((n,a)=>n+a.length,0);
+  const saved = JSON.parse(localStorage.getItem("cca_check")||"{}");
+  const done = Object.values(saved).filter(Boolean).length;
+  const pct = Math.round(done/total*100);
+  $("#progBar").style.width = pct+"%";
+  $("#pctText").textContent = pct+"%";
+}
+updateProgress();
+
+$("#resetBtn").onclick=()=>{
+  if(confirm("Reset all checkboxes and quiz progress?")){
+    localStorage.removeItem("cca_check");
+    $$('input[type=checkbox][data-id]').forEach(c=>c.checked=false);
+    updateProgress();
+  }
+};
+
+// distractors
+$("#distractorList").innerHTML = `<ul class="clean">`+DISTRACTORS.map(d=>
+  `<li><b>${d[0]}</b><br><span style="color:var(--muted)">${d[1]}</span></li>`).join("")+`</ul>`;
+
+// plan
+$("#planList").innerHTML = PLAN.map(p=>`
+  <div class="card" style="display:flex;gap:18px;align-items:flex-start">
+    <div class="tag acc" style="flex:none;margin-top:3px">${p.w}</div>
+    <div><h3 style="margin:0 0 4px">${p.t}</h3><p class="lead">${p.d}</p></div>
+  </div>`).join("");
+
+// sources
+$("#sourceList").innerHTML = SOURCES.map(s=>`
+  <div class="src">
+    <div class="ic">${s[0]}</div>
+    <div><a href="${s[2]}" target="_blank" rel="noopener">${s[1]}</a><div class="meta">${s[3]} · ${s[2]}</div></div>
+  </div>`).join("");
+
+/* ============================ NAV ============================ */
+function show(view){
+  $$(".view").forEach(v=>v.classList.remove("active"));
+  $("#view-"+view).classList.add("active");
+  $$(".navbtn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+  window.scrollTo({top:0,behavior:"instant"});
+  location.hash = view;
+}
+$$(".navbtn").forEach(b=>{ if(b.dataset.view) b.onclick=()=>show(b.dataset.view); });
+$$("[data-jump]").forEach(a=>a.onclick=e=>{e.preventDefault();show(a.dataset.jump);});
+if(location.hash){const v=location.hash.slice(1); if($("#view-"+v)) show(v);}
+
+/* ============================ FLASHCARDS ============================ */
+let curDeck="principles", curCard=0;
+const fc=$("#fc");
+function renderDeckPicker(){
+  $("#deckPicker").innerHTML = Object.entries(DECKS).map(([k,d])=>
+    `<button data-deck="${k}" class="${k===curDeck?'active':''}">${d.name} <span style="opacity:.6">${d.cards.length}</span></button>`).join("");
+  $$("#deckPicker button").forEach(b=>b.onclick=()=>{curDeck=b.dataset.deck;curCard=0;renderDeckPicker();renderCard();});
+}
+function renderCard(){
+  const deck=DECKS[curDeck], c=deck.cards[curCard];
+  fc.classList.remove("flipped");
+  $("#fcQ").textContent=c.q;
+  $("#fcA").textContent=c.a;
+  $("#fcCount").textContent=`${curCard+1} / ${deck.cards.length}`;
+}
+fc.onclick=()=>fc.classList.toggle("flipped");
+$("#fcNext").onclick=()=>{const n=DECKS[curDeck].cards.length;curCard=(curCard+1)%n;renderCard();};
+$("#fcPrev").onclick=()=>{const n=DECKS[curDeck].cards.length;curCard=(curCard-1+n)%n;renderCard();};
+document.addEventListener("keydown",e=>{
+  if(!$("#view-flash").classList.contains("active"))return;
+  if(e.code==="Space"){e.preventDefault();fc.classList.toggle("flipped");}
+  if(e.code==="ArrowRight")$("#fcNext").click();
+  if(e.code==="ArrowLeft")$("#fcPrev").click();
+});
+renderDeckPicker();renderCard();
+
+/* ============================ QUIZ ============================ */
+let qAnswered=0, qCorrect=0;
+function renderQuiz(){
+  $("#quizList").innerHTML = QUIZ.map((q,qi)=>`
+    <div class="q" data-qi="${qi}">
+      <div class="scenario">${q.s}</div>
+      <div class="stem">${qi+1}. ${q.stem}</div>
+      ${q.opts.map((o,oi)=>`<button class="opt" data-qi="${qi}" data-oi="${oi}">${o.t}</button>`).join("")}
+      <div class="explain"><b>Why:</b> ${q.why}</div>
+    </div>`).join("");
+  $$(".opt").forEach(btn=>btn.onclick=()=>{
+    const qi=+btn.dataset.qi, oi=+btn.dataset.oi;
+    const block=btn.closest(".q");
+    if(block.dataset.done)return;
+    block.dataset.done="1";
+    const opts=[...block.querySelectorAll(".opt")];
+    opts.forEach((b,i)=>{
+      b.disabled=true;
+      if(QUIZ[qi].opts[i].ok)b.classList.add("correct");
+    });
+    if(!QUIZ[qi].opts[oi].ok)btn.classList.add("wrong");
+    block.querySelector(".explain").classList.add("show");
+    qAnswered++; if(QUIZ[qi].opts[oi].ok)qCorrect++;
+    $("#quizScore").textContent=`Score: ${qCorrect} / ${qAnswered}`;
+  });
+}
+renderQuiz();
+</script>
+</body>
+</html>
