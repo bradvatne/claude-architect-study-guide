@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Capstone: a refund-support agent harness · CCA Foundations</title>
+<link rel="stylesheet" href="assets/deepdive.css">
+<style>
+  /* concept-index filter table only */
+  #cmap td:first-child{font-weight:600}
+  #cmap .dom{font-family:var(--mono);font-size:12px;color:var(--accent-2)}
+  #cmap tr.hidden{display:none}
+  #cmap td a{white-space:normal}
+  .cmaphead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .cmaphead .count{color:var(--dim);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="main">
+  <div class="topbar"><a class="back" href="index.html">← Back to study guide</a><span class="badge">Capstone · all 5 domains</span></div>
+  <div class="pagehead">
+    <div class="eyebrow">One app, every concept</div>
+    <h1>Capstone: a refund-support agent harness</h1>
+    <p>One realistic application — a customer-support refund agent plus the team workflow that ships it — exercises every concept the Claude Certified Architect Foundations exam tests. We show the code, then map each concept to the exact line where it lives. Use the concept index as your study map: filter by domain, click any row to jump to the code.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">ℹ️ Verified against the Claude API reference</div>
+    <p>Code checked against the current Anthropic SDK; default model <code>claude-opus-4-8</code>. The hand-written loop is for learning — in production you'd usually let the SDK tool runner spin it.</p>
+  </div>
+
+  <!-- ============ CARD 1 — THE SCENARIO ============ -->
+  <div class="card">
+    <h2><span class="n">1</span>The scenario</h2>
+    <p class="lead">A SaaS company runs a support agent that resolves refund tickets end to end.</p>
+    <p>The agent must <b>verify identity before refunding</b>, <b>never exceed $500</b>, <b>cite the policy it applied</b>, <b>escalate the right cases</b> to a human, and <b>run cheaply at scale</b>. That single set of requirements naturally drags in all five exam domains: the agentic loop and decomposition (D1), the tool surface and MCP integrations (D2), how the team builds it with Claude Code (D3), prompting, structured output, and the right API for each job (D4), and context discipline, reliability, and human review (D5).</p>
+    <p>The rest of the page is the codebase, file by file, each block tagged with the concepts it demonstrates. The files:</p>
+    <ul class="clean">
+      <li><code>tools.py</code> — the tool surface + structured error helper</li>
+      <li><code>context.py</code> — context discipline (pinned facts, trimming)</li>
+      <li><code>agent.py</code> — the system prompt, the core loop, and the deterministic gate</li>
+      <li><code>subagent.py</code> — the isolated investigator subagent</li>
+      <li><code>batch_triage.py</code> — nightly bulk classification via the Batches API</li>
+      <li><code>.mcp.json</code> — the refund-policy knowledge base over MCP</li>
+      <li><code>review.py</code> — the human-audit log + sampling strategy</li>
+      <li>the <b>Claude Code config</b> the team builds the agent with (CLAUDE.md, rules, commands, skills, CI)</li>
+    </ul>
+  </div>
+
+  <!-- ============ CARD 2 — ARCHITECTURE ============ -->
+  <div class="card">
+    <h2><span class="n">2</span>Architecture at a glance</h2>
+    <p class="lead">The live agent is a synchronous loop with a deterministic gate in front of the real side effect. A subagent, an MCP knowledge base, and a nightly batch job hang off the side.</p>
+    <div class="codewrap solo" id="arch"><pre><code>   ticket + customer_email
+            │
+            ▼
+   ┌─────────────────────────────────────────────┐
+   │   run_agent  loop   (agent.py)               │
+   │                                              │
+   │   model ◄────────────► tools                 │
+   │     │   stop_reason     lookup_customer      │
+   │     │   drives loop     get_orders           │
+   │     │                   investigate_account ─┼──► ┌──────────────────────┐
+   │     │                   submit_resolution    │    │ investigator subagent │
+   │     ▼                                        │    │ (subagent.py)         │
+   │   submit_resolution ──► apply_gate           │    │ fresh messages[]      │
+   │                          (deterministic)     │    │ READ-ONLY tools       │
+   │                              │               │    │ isolated context      │
+   │              ┌───────────────┴───────────┐   │    │ returns STRUCTURED     │
+   │              ▼                            ▼   │    │ result (or failure)   │
+   │         issue_refund                 escalate │    └──────────────────────┘
+   │         (real side effect)           (human)  │
+   └───────────────────┬──────────────────────────┘
+                       │ cites
+                       ▼
+            ┌────────────────────────┐          ┌───────────────────────────┐
+            │ MCP policy KB (.mcp.json)│         │ nightly Batches job        │
+            │ resources = policy docs  │         │ (batch_triage.py)          │
+            │ → doc_id + as_of_date    │         │ 50% cheaper, ≤24h, no SLA  │
+            └────────────────────────┘          └───────────────────────────┘
+
+   ┌──────────────────────────────────────────────────────────────────────┐
+   │ built &amp; shipped with Claude Code: CLAUDE.md · .claude/rules ·         │
+   │ .claude/commands · .claude/skills · headless CI review                 │
+   └──────────────────────────────────────────────────────────────────────┘</code></pre></div>
+  </div>
+
+  <!-- ============ CARD 3 — CONCEPT INDEX (THE MAP) ============ -->
+  <div class="card">
+    <h2><span class="n">3</span>The concept index <span style="font-size:13px;color:var(--dim);font-weight:400">— the map</span></h2>
+    <p class="lead">Every concept the exam tests, and the exact line of this app where it lives. Filter by domain; click a row to jump to the code.</p>
+    <div class="btnrow">
+      <button class="chip active" data-dom="all">All</button>
+      <button class="chip" data-dom="D1">D1</button>
+      <button class="chip" data-dom="D2">D2</button>
+      <button class="chip" data-dom="D3">D3</button>
+      <button class="chip" data-dom="D4">D4</button>
+      <button class="chip" data-dom="D5">D5</button>
+      <button class="chip" data-dom="P">Principles</button>
+    </div>
+    <div class="cmaphead"><span class="count" id="cmapcount"></span></div>
+    <table id="cmap">
+      <thead><tr><th>Concept</th><th>Domain</th><th>Where it lives</th></tr></thead>
+      <tbody>
+        <tr data-dom="D1"><td>Agentic loop driven by stop_reason</td><td class="dom">D1</td><td><a href="#loop">#loop</a> — end_turn breaks, tool_use continues</td></tr>
+        <tr data-dom="D1"><td>Append full assistant content each turn</td><td class="dom">D1</td><td><a href="#loop">#loop</a></td></tr>
+        <tr data-dom="D1"><td>pause_turn resume</td><td class="dom">D1</td><td><a href="#loop">#loop</a></td></tr>
+        <tr data-dom="D1"><td>Coordinator spins up a subagent (Task pattern)</td><td class="dom">D1</td><td><a href="#subagent">#subagent</a></td></tr>
+        <tr data-dom="D1"><td>Isolated subagent context (hub-and-spoke)</td><td class="dom">D1</td><td><a href="#subagent">#subagent</a></td></tr>
+        <tr data-dom="D1"><td>Dynamic subagent selection (only when needed)</td><td class="dom">D1</td><td><a href="#tools">#tools</a> — investigate_account "use ONLY for…"</td></tr>
+        <tr data-dom="D1"><td>Deterministic gate / programmatic enforcement</td><td class="dom">D1</td><td><a href="#gate">#gate</a></td></tr>
+        <tr data-dom="D1"><td>Least privilege scoped tools</td><td class="dom">D1</td><td><a href="#tools">#tools</a> — INVESTIGATOR_TOOLS subset</td></tr>
+
+        <tr data-dom="D2"><td>Tool descriptions = primary selection mechanism</td><td class="dom">D2</td><td><a href="#tools">#tools</a></td></tr>
+        <tr data-dom="D2"><td>Structured error categories (transient/validation/business/permission)</td><td class="dom">D2</td><td><a href="#errors">#errors</a></td></tr>
+        <tr data-dom="D2"><td>Valid empty result is not an error</td><td class="dom">D2</td><td><a href="#tools">#tools</a> (get_orders) / <a href="#errors">#errors</a></td></tr>
+        <tr data-dom="D2"><td>MCP server config (.mcp.json, ${ENV_VAR})</td><td class="dom">D2</td><td><a href="#mcp">#mcp</a></td></tr>
+        <tr data-dom="D2"><td>Resources reduce exploratory tool calls</td><td class="dom">D2</td><td><a href="#mcp">#mcp</a></td></tr>
+        <tr data-dom="D2"><td>Community vs custom MCP server</td><td class="dom">D2</td><td><a href="#mcp">#mcp</a></td></tr>
+
+        <tr data-dom="D3"><td>CLAUDE.md hierarchy (project committed vs user-local)</td><td class="dom">D3</td><td><a href="#ship">#ship</a></td></tr>
+        <tr data-dom="D3"><td>Path-specific .claude/rules (paths frontmatter)</td><td class="dom">D3</td><td><a href="#ship">#ship</a></td></tr>
+        <tr data-dom="D3"><td>Shared slash command (.claude/commands)</td><td class="dom">D3</td><td><a href="#ship">#ship</a></td></tr>
+        <tr data-dom="D3"><td>Skill with context: fork</td><td class="dom">D3</td><td><a href="#ship">#ship</a></td></tr>
+        <tr data-dom="D3"><td>Headless CI (-p/--print, --output-format json, --json-schema)</td><td class="dom">D3</td><td><a href="#ship">#ship</a></td></tr>
+        <tr data-dom="D3"><td>Independent review beats self-review</td><td class="dom">D3</td><td><a href="#ship">#ship</a></td></tr>
+
+        <tr data-dom="D4"><td>Structured output (tool_use + strict schema)</td><td class="dom">D4</td><td><a href="#tools">#tools</a> (submit_resolution) / <a href="#structured">#structured</a></td></tr>
+        <tr data-dom="D4"><td>Nullable fields prevent fabrication</td><td class="dom">D4</td><td><a href="#structured">#structured</a></td></tr>
+        <tr data-dom="D4"><td>Enum with "other" for extensibility</td><td class="dom">D4</td><td><a href="#structured">#structured</a></td></tr>
+        <tr data-dom="D4"><td>Syntax vs semantics (schema can't check the math)</td><td class="dom">D4</td><td><a href="#gate">#gate</a></td></tr>
+        <tr data-dom="D4"><td>Retry with error feedback</td><td class="dom">D4</td><td><a href="#loop">#loop</a></td></tr>
+        <tr data-dom="D4"><td>Explicit criteria beat vague instructions</td><td class="dom">D4</td><td><a href="#prompt">#prompt</a></td></tr>
+        <tr data-dom="D4"><td>Few-shot shows the reasoning</td><td class="dom">D4</td><td><a href="#prompt">#prompt</a></td></tr>
+        <tr data-dom="D4"><td>Message Batches API (50% cheaper, no SLA, no multi-turn)</td><td class="dom">D4</td><td><a href="#batch">#batch</a></td></tr>
+        <tr data-dom="D4"><td>Batch vs sync choice</td><td class="dom">D4</td><td><a href="#batch">#batch</a></td></tr>
+
+        <tr data-dom="D5"><td>Lost-in-the-middle (key info at start/end)</td><td class="dom">D5</td><td><a href="#context">#context</a></td></tr>
+        <tr data-dom="D5"><td>Case-facts block kept outside summaries</td><td class="dom">D5</td><td><a href="#context">#context</a></td></tr>
+        <tr data-dom="D5"><td>Trim verbose tool output</td><td class="dom">D5</td><td><a href="#context">#context</a></td></tr>
+        <tr data-dom="D5"><td>Compaction; append full content</td><td class="dom">D5</td><td><a href="#loop">#loop</a></td></tr>
+        <tr data-dom="D5"><td>Escalation triggers (not sentiment, not self-confidence)</td><td class="dom">D5</td><td><a href="#prompt">#prompt</a></td></tr>
+        <tr data-dom="D5"><td>Structured error propagation up to coordinator</td><td class="dom">D5</td><td><a href="#subagent">#subagent</a></td></tr>
+        <tr data-dom="D5"><td>Local recovery for transient; never kill the workflow</td><td class="dom">D5</td><td><a href="#subagent">#subagent</a></td></tr>
+        <tr data-dom="D5"><td>Provenance (citation + date travels with the decision)</td><td class="dom">D5</td><td><a href="#structured">#structured</a> (also <a href="#mcp">#mcp</a>, <a href="#review">#review</a>)</td></tr>
+        <tr data-dom="D5"><td>Human review: field/segment-level, stratified, calibrated</td><td class="dom">D5</td><td><a href="#review">#review</a></td></tr>
+
+        <tr data-dom="P"><td>1 · Deterministic over probabilistic</td><td class="dom">P</td><td><a href="#gate">#gate</a></td></tr>
+        <tr data-dom="P"><td>2 · Root cause over symptom</td><td class="dom">P</td><td><a href="#subagent">#subagent</a></td></tr>
+        <tr data-dom="P"><td>3 · Proportionate first step</td><td class="dom">P</td><td><a href="#tools">#tools</a></td></tr>
+        <tr data-dom="P"><td>4 · Match the tool/API to the problem</td><td class="dom">P</td><td><a href="#batch">#batch</a></td></tr>
+        <tr data-dom="P"><td>5 · Least privilege</td><td class="dom">P</td><td><a href="#subagent">#subagent</a></td></tr>
+        <tr data-dom="P"><td>6 · Sentiment &amp; self-confidence are unreliable</td><td class="dom">P</td><td><a href="#prompt">#prompt</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============ CARD 4 — TOOLS & ERRORS ============ -->
+  <div class="card">
+    <h2><span class="n">4</span>Tools &amp; structured errors</h2>
+    <p class="lead">The tool surface is the agent's whole world. Each description says <b>when</b> to use the tool, not just what it does — that is the model's primary selection signal. <code>tools.py</code>:</p>
+    <div class="codewrap solo" id="tools"><pre><code><span class="cm"># tools.py — the agent's tool surface. Descriptions are the PRIMARY selection</span>
+<span class="cm"># mechanism, so each says WHEN to use it, not just what it does.</span>
+
+LOOKUP_CUSTOMER = {
+    <span class="st">"name"</span>: <span class="st">"lookup_customer"</span>,
+    <span class="st">"description"</span>: (
+        <span class="st">"Find a customer by email or account ID. Use FIRST, before any order "</span>
+        <span class="st">"or refund tool, to resolve and identity-verify the customer. If more "</span>
+        <span class="st">"than one customer matches, ask the user for an account ID — never guess."</span>
+    ),
+    <span class="st">"input_schema"</span>: {
+        <span class="st">"type"</span>: <span class="st">"object"</span>,
+        <span class="st">"properties"</span>: {
+            <span class="st">"email"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>, <span class="st">"description"</span>: <span class="st">"Customer email"</span>},
+            <span class="st">"account_id"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>, <span class="st">"description"</span>: <span class="st">"Account ID if known"</span>},
+        },
+    },
+}
+
+GET_ORDERS = {
+    <span class="st">"name"</span>: <span class="st">"get_orders"</span>,
+    <span class="st">"description"</span>: (
+        <span class="st">"List a verified customer's recent orders. Use after lookup_customer "</span>
+        <span class="st">"when you need an order total or status to decide a refund. An empty "</span>
+        <span class="hl"><span class="st">"list means the customer has no orders — a valid answer, not an error."</span></span>
+    ),
+    <span class="st">"input_schema"</span>: {
+        <span class="st">"type"</span>: <span class="st">"object"</span>,
+        <span class="st">"properties"</span>: {<span class="st">"customer_id"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>}},
+        <span class="st">"required"</span>: [<span class="st">"customer_id"</span>],
+    },
+}
+
+INVESTIGATE_ACCOUNT = {
+    <span class="st">"name"</span>: <span class="st">"investigate_account"</span>,
+    <span class="st">"description"</span>: (
+        <span class="st">"Spin up an isolated investigator to summarize one customer's history "</span>
+        <span class="st">"(lifetime value, prior refunds, abuse flags). Use ONLY for ambiguous "</span>
+        <span class="st">"or high-value cases — it runs a full sub-agent and costs extra."</span>
+    ),
+    <span class="st">"input_schema"</span>: {
+        <span class="st">"type"</span>: <span class="st">"object"</span>,
+        <span class="st">"properties"</span>: {<span class="st">"customer_id"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>}},
+        <span class="st">"required"</span>: [<span class="st">"customer_id"</span>],
+    },
+}
+
+SUBMIT_RESOLUTION = {
+    <span class="st">"name"</span>: <span class="st">"submit_resolution"</span>,
+    <span class="st">"description"</span>: <span class="st">"Submit your final decision exactly once, instead of writing it as prose."</span>,
+    <span class="hl"><span class="st">"strict"</span>: <span class="kw">True</span>,                       <span class="cm"># structured output: schema-valid arguments</span></span>
+    <span class="st">"input_schema"</span>: {
+        <span class="st">"type"</span>: <span class="st">"object"</span>,
+        <span class="st">"properties"</span>: {
+            <span class="st">"action"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>, <span class="st">"enum"</span>: [<span class="st">"refund"</span>, <span class="st">"deny"</span>, <span class="st">"escalate"</span>, <span class="st">"other"</span>]},
+            <span class="st">"amount_usd"</span>: {<span class="st">"type"</span>: [<span class="st">"number"</span>, <span class="st">"null"</span>]},    <span class="cm"># nullable: return null, don't fabricate</span>
+            <span class="st">"reason"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>},
+            <span class="st">"policy_citation"</span>: {                           <span class="cm"># provenance travels with the decision</span>
+                <span class="st">"type"</span>: <span class="st">"object"</span>,
+                <span class="st">"properties"</span>: {
+                    <span class="st">"doc_id"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>},
+                    <span class="st">"as_of_date"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>, <span class="st">"format"</span>: <span class="st">"date"</span>},
+                },
+                <span class="st">"required"</span>: [<span class="st">"doc_id"</span>, <span class="st">"as_of_date"</span>],
+            },
+            <span class="st">"detail"</span>: {<span class="st">"type"</span>: [<span class="st">"string"</span>, <span class="st">"null"</span>]},        <span class="cm"># used when action == "other"</span>
+        },
+        <span class="st">"required"</span>: [<span class="st">"action"</span>, <span class="st">"reason"</span>, <span class="st">"policy_citation"</span>],
+        <span class="st">"additionalProperties"</span>: <span class="kw">False</span>,
+    },
+}
+
+<span class="cm"># The live agent is scoped to these. The investigator gets a read-only SUBSET —</span>
+<span class="cm"># least privilege keeps tool selection reliable and refunds out of its reach.</span>
+AGENT_TOOLS        = [LOOKUP_CUSTOMER, GET_ORDERS, INVESTIGATE_ACCOUNT, SUBMIT_RESOLUTION]
+INVESTIGATOR_TOOLS = [LOOKUP_CUSTOMER, GET_ORDERS]</code></pre></div>
+
+    <p class="lead" style="margin-top:18px">Tool failures are <b>categorized</b>, not collapsed to a generic "failed" — so the loop and the coordinator can decide whether to retry. <code>tools.py</code>, continued:</p>
+    <div class="codewrap solo" id="errors"><pre><code><span class="kw">def</span> <span class="fn">tool_error</span>(category, message, *, retryable):
+    <span class="st">"""Structured tool error. Categories: transient | validation | business |</span>
+<span class="st">    permission. Never collapse to a generic 'failed', and never confuse a real</span>
+<span class="st">    failure with a valid-but-empty result (which is NOT an error)."""</span>
+    <span class="kw">return</span> {
+        <span class="hl"><span class="st">"is_error"</span>: <span class="kw">True</span>,</span>
+        <span class="st">"content"</span>: <span class="st">f"[{category}] {message}"</span>,
+        <span class="st">"_category"</span>: category,        <span class="cm"># _category/_retryable shown for teaching;</span>
+        <span class="st">"_retryable"</span>: retryable,      <span class="cm"># they are illustrative, not mandated API fields</span>
+    }</code></pre></div>
+
+    <div class="callout key">
+      <div class="h">🔑 Descriptions are the selection mechanism</div>
+      <p>Each tool says <b>WHEN</b> to use it. The investigator gets a read-only SUBSET of the tools (<code>INVESTIGATOR_TOOLS</code>) — least privilege keeps refunds out of its reach and keeps tool selection reliable.</p>
+    </div>
+    <div>
+      <span class="pill">D2 · tool descriptions</span>
+      <span class="pill">D2 · structured errors</span>
+      <span class="pill">D2 · empty ≠ error</span>
+      <span class="pill">D1 · least privilege</span>
+      <span class="pill">D4 · strict schema</span>
+      <span class="pill">P3 · proportionate first step</span>
+    </div>
+  </div>
+
+  <!-- ============ CARD 5 — SYSTEM PROMPT & FEW-SHOT ============ -->
+  <div class="card">
+    <h2><span class="n">5</span>The system prompt &amp; few-shot</h2>
+    <p class="lead">Explicit, literally-checkable criteria — not vague guidance — and two worked examples that show the <b>reasoning</b> for borderline calls. <code>agent.py</code>:</p>
+    <div class="codewrap solo" id="prompt"><pre><code>REFUND_LIMIT_USD = <span class="nm">500</span>
+
+<span class="cm"># Explicit, checkable criteria beat vague guidance. The key rules sit at the TOP;</span>
+<span class="cm"># the live case facts get re-pinned at the BOTTOM of the messages every turn.</span>
+SYSTEM = <span class="st">"""You are a refund-support agent.</span>
+
+<span class="st">DECISION CRITERIA (apply literally):</span>
+<span class="st">- Refund only an identity-VERIFIED customer, only an amount that matches a real</span>
+<span class="st">  order total, and only at or below the $500 limit.</span>
+<span class="hl"><span class="st">- ESCALATE (do not decide) when: the customer explicitly asks for a human; the</span></span>
+<span class="st">  policy does not cover the case; or you cannot make progress. Do NOT escalate</span>
+<span class="st">  because the customer sounds upset, and do NOT escalate based on your own</span>
+<span class="st">  confidence level.</span>
+<span class="st">- If more than one customer matches, ASK for an account ID — never guess.</span>
+<span class="st">- Cite the policy doc and its date in every resolution.</span>
+
+<span class="st">Call submit_resolution exactly once when you have decided."""</span>
+
+<span class="cm"># Few-shot: two worked examples that show the REASONING for a borderline call,</span>
+<span class="cm"># not just input -&gt; label.</span>
+FEWSHOT = [
+    {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="st">"Example: verified customer, $90 order, asks for a refund on a late delivery."</span>},
+    {<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>: <span class="st">"Late delivery is covered by policy REF-12. $90 is at or below $500 and matches the order total -&gt; refund $90, cite REF-12."</span>},
+    {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="st">"Example: an angry customer demands $900 back on a $200 order."</span>},
+    {<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>: <span class="st">"Anger is not a criterion. $900 exceeds both the $500 limit and the real $200 total -&gt; deny the $900; offer the $200 path or escalate. Sentiment changes nothing."</span>},
+]</code></pre></div>
+    <div class="callout tip">
+      <div class="h">✓ Explicit beats vague; few-shot shows reasoning</div>
+      <p>Checkable criteria beat vague guidance; the few-shot examples show the REASONING for borderline calls. Note the escalation triggers: policy gaps, explicit requests, or no progress — <b>never</b> sentiment, and <b>never</b> the model's self-rated confidence.</p>
+    </div>
+    <div>
+      <span class="pill">D4 · explicit criteria</span>
+      <span class="pill">D4 · few-shot reasoning</span>
+      <span class="pill">D5 · escalation triggers</span>
+      <span class="pill">P6 · sentiment/confidence unreliable</span>
+    </div>
+  </div>
+
+  <!-- ============ CARD 6 — CONTEXT DISCIPLINE ============ -->
+  <div class="card">
+    <h2><span class="n">6</span>Context discipline</h2>
+    <p class="lead">Keep the load-bearing facts where the model attends best, and shrink noisy tool output before it piles up. <code>context.py</code>:</p>
+    <div class="codewrap solo" id="context"><pre><code><span class="cm"># context.py — keep the facts that summaries would drop, and shrink noisy tool</span>
+<span class="cm"># output before it piles up in the window.</span>
+
+<span class="kw">def</span> <span class="fn">case_facts_block</span>(facts):
+    <span class="st">"""Re-injected at the END of messages every turn — models attend best to the</span>
+<span class="st">    start and end ('lost in the middle'). IDs, amounts, dates, and the</span>
+<span class="st">    verification flag live HERE verbatim, OUTSIDE any summary, so compaction can</span>
+<span class="st">    never quietly drop them."""</span>
+    lines = <span class="st">"\n"</span>.join(<span class="st">f"{k}: {v}"</span> <span class="kw">for</span> k, v <span class="kw">in</span> facts.items())
+    <span class="hl"><span class="kw">return</span> {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: <span class="st">f"&lt;case_facts&gt;\n{lines}\n&lt;/case_facts&gt;"</span>}</span>
+
+<span class="kw">def</span> <span class="fn">trim_orders</span>(raw):
+    <span class="st">"""The orders API returns ~40 fields per order. Keep the 4 the decision</span>
+<span class="st">    needs so verbose payloads don't dilute the context."""</span>
+    <span class="kw">return</span> {<span class="st">"id"</span>: raw[<span class="st">"id"</span>], <span class="st">"total_usd"</span>: raw[<span class="st">"total_usd"</span>],
+            <span class="st">"status"</span>: raw[<span class="st">"status"</span>], <span class="st">"ordered_at"</span>: raw[<span class="st">"ordered_at"</span>]}</code></pre></div>
+    <div class="callout note">
+      <div class="h">ℹ️ Lost-in-the-middle, summaries, and trimming</div>
+      <p>Models attend best to the <b>start and end</b> of the window — the middle is where facts get lost. So the case-facts block (IDs, amounts, the <code>verified</code> flag) is re-pinned at the END every turn and kept <b>outside any summary</b>, so server-side compaction can never silently drop it. And verbose tool output gets <b>trimmed</b> to the 4 fields the decision actually needs before it enters the window.</p>
+    </div>
+    <div>
+      <span class="pill">D5 · lost-in-the-middle</span>
+      <span class="pill">D5 · facts outside summaries</span>
+      <span class="pill">D5 · trim tool output</span>
+    </div>
+  </div>
+
+  <!-- ============ CARD 7 — CORE LOOP & GATE ============ -->
+  <div class="card">
+    <h2><span class="n">7</span>The core loop &amp; the gate</h2>
+    <p class="lead">This is the heart of the app. <code>stop_reason</code> drives the loop; a deterministic gate sits between the model's decision and the real refund. <code>agent.py</code>:</p>
+    <div class="codewrap solo" id="loop"><pre><code><span class="kw">import</span> anthropic
+<span class="kw">from</span> tools <span class="kw">import</span> AGENT_TOOLS, tool_error
+<span class="kw">from</span> context <span class="kw">import</span> case_facts_block
+<span class="kw">from</span> subagent <span class="kw">import</span> investigate_account
+
+client = anthropic.Anthropic()
+
+<span class="kw">def</span> <span class="fn">run_agent</span>(ticket_text, customer_email):
+    facts = {<span class="st">"customer_email"</span>: customer_email, <span class="st">"verified"</span>: <span class="kw">False</span>,
+             <span class="st">"customer_id"</span>: <span class="kw">None</span>, <span class="st">"order_totals"</span>: []}
+    messages = FEWSHOT + [
+        {<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: ticket_text},
+        case_facts_block(facts),               <span class="cm"># pinned at the END (lost-in-the-middle)</span>
+    ]
+
+    <span class="kw">while</span> <span class="kw">True</span>:
+        resp = client.beta.messages.create(
+            betas=[<span class="st">"compact-2026-01-12"</span>],                       <span class="cm"># auto-compaction for long chats</span>
+            model=<span class="st">"claude-opus-4-8"</span>, max_tokens=<span class="nm">16000</span>,
+            system=SYSTEM, tools=AGENT_TOOLS, messages=messages,
+            context_management={<span class="st">"edits"</span>: [{<span class="st">"type"</span>: <span class="st">"compact_20260112"</span>}]},
+        )
+
+        <span class="kw">if</span> resp.stop_reason == <span class="st">"end_turn"</span>:                      <span class="cm"># model is done — stop the loop</span>
+            <span class="kw">return</span> final_text(resp)
+        <span class="kw">if</span> resp.stop_reason == <span class="st">"pause_turn"</span>:                    <span class="cm"># server-side tool paused; resume</span>
+            messages.append({<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>: resp.content})
+            <span class="kw">continue</span>
+
+        <span class="cm"># Append the FULL assistant turn verbatim — preserves the tool_use blocks</span>
+        <span class="cm"># (and any compaction block). Appending only the text would 400 next call.</span>
+        <span class="hl">messages.append({<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>: resp.content})</span>
+
+        results = []
+        <span class="kw">for</span> block <span class="kw">in</span> resp.content:
+            <span class="kw">if</span> block.type != <span class="st">"tool_use"</span>:
+                <span class="kw">continue</span>
+            <span class="kw">if</span> block.name == <span class="st">"submit_resolution"</span>:
+                verdict = apply_gate(block.input, facts)        <span class="cm"># deterministic gate</span>
+                <span class="kw">if</span> verdict[<span class="st">"ok"</span>]:
+                    record_decision(block.input, facts)         <span class="cm"># human-review log</span>
+                    <span class="kw">return</span> verdict
+                <span class="cm"># Rejected -&gt; feed the reason back; the model revises (retry-with-feedback)</span>
+                results.append({<span class="st">"type"</span>: <span class="st">"tool_result"</span>, <span class="st">"tool_use_id"</span>: block.id,
+                                **tool_error(<span class="st">"business"</span>, verdict[<span class="st">"reason"</span>], retryable=<span class="kw">True</span>)})
+            <span class="kw">elif</span> block.name == <span class="st">"investigate_account"</span>:
+                results.append(run_subagent(block, facts))      <span class="cm"># nested loop, isolated context</span>
+            <span class="kw">elif</span> block.name == <span class="st">"lookup_customer"</span>:
+                results.append(do_lookup(block, facts))         <span class="cm"># may set facts["verified"]</span>
+            <span class="kw">elif</span> block.name == <span class="st">"get_orders"</span>:
+                results.append(do_get_orders(block, facts))     <span class="cm"># trims; empty != error</span>
+
+        messages.append({<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: results})
+        messages.append(case_facts_block(facts))                <span class="cm"># re-pin updated facts each turn</span></code></pre></div>
+
+    <p class="lead" style="margin-top:18px">The gate enforces the must-hold rule <b>in code</b>, and catches the one semantic error a JSON schema can't. <code>agent.py</code>:</p>
+    <div class="codewrap solo" id="gate"><pre><code><span class="kw">def</span> <span class="fn">apply_gate</span>(resolution, facts):
+    <span class="st">"""DETERMINISTIC enforcement — the rule that MUST hold lives in code, not in</span>
+<span class="st">    the prompt (a prompt instruction has a non-zero failure rate; this does not).</span>
+<span class="st">    It also catches the SEMANTIC error a JSON schema cannot: an amount that does</span>
+<span class="st">    not match any real order."""</span>
+    <span class="kw">if</span> resolution[<span class="st">"action"</span>] != <span class="st">"refund"</span>:
+        <span class="kw">return</span> {<span class="st">"ok"</span>: <span class="kw">True</span>, <span class="st">"resolution"</span>: resolution}            <span class="cm"># deny/escalate/other pass through</span>
+    <span class="kw">if</span> <span class="kw">not</span> facts[<span class="st">"verified"</span>]:
+        <span class="kw">return</span> {<span class="st">"ok"</span>: <span class="kw">False</span>, <span class="st">"reason"</span>: <span class="st">"Refund blocked: customer is not identity-verified."</span>}
+    amt = resolution.get(<span class="st">"amount_usd"</span>)
+    <span class="kw">if</span> amt <span class="kw">is</span> <span class="kw">None</span> <span class="kw">or</span> amt &gt; REFUND_LIMIT_USD:
+        <span class="kw">return</span> {<span class="st">"ok"</span>: <span class="kw">False</span>, <span class="st">"reason"</span>: <span class="st">f"Refund {amt} exceeds the ${REFUND_LIMIT_USD} limit."</span>}
+    <span class="kw">if</span> amt <span class="kw">not</span> <span class="kw">in</span> facts[<span class="st">"order_totals"</span>]:                         <span class="cm"># schema can't check this</span>
+        <span class="kw">return</span> {<span class="st">"ok"</span>: <span class="kw">False</span>, <span class="st">"reason"</span>: <span class="st">f"{amt} matches no real order total {facts['order_totals']}."</span>}
+    <span class="hl">issue_refund(facts[<span class="st">"customer_id"</span>], amt)                      <span class="cm"># the real side effect — only now</span></span>
+    <span class="kw">return</span> {<span class="st">"ok"</span>: <span class="kw">True</span>, <span class="st">"resolution"</span>: resolution}</code></pre></div>
+
+    <div class="callout key">
+      <div class="h">🔑 stop_reason drives the loop; the gate enforces in code</div>
+      <p><code>stop_reason</code> drives the loop — <code>end_turn</code> breaks, <code>pause_turn</code> resumes, otherwise tools run. The deterministic gate (in code, not the prompt) enforces the must-hold rule AND catches the semantic error a JSON schema can't: an amount that matches no real order. A rejected resolution is fed back as an error → the model revises.</p>
+    </div>
+    <div>
+      <span class="pill">D1 · stop_reason loop</span>
+      <span class="pill">D1 · append full content</span>
+      <span class="pill">D1 · pause_turn resume</span>
+      <span class="pill">D1 · deterministic gate</span>
+      <span class="pill">D4 · retry with feedback</span>
+      <span class="pill">D5 · compaction</span>
+      <span class="pill">P1 · deterministic over probabilistic</span>
+    </div>
+  </div>
+
+  <!-- ============ CARD 8 — STRUCTURED OUTPUT ============ -->
+  <div class="card">
+    <h2><span class="n">8</span>Structured output</h2>
+    <p class="lead">The <code>submit_resolution</code> tool is a strict-schema tool (its schema is in <a href="#tools">tools.py</a>). Here is how the model's call is parsed — and where schema validity stops being enough. <code>agent.py</code>:</p>
+    <div class="codewrap solo" id="structured"><pre><code><span class="cm"># submit_resolution is a strict-schema tool, so its arguments are guaranteed to</span>
+<span class="cm"># PARSE. But schema validity is not correctness:</span>
+<span class="cm">#   - nullable amount_usd  -&gt; the model returns null instead of inventing a number</span>
+<span class="cm">#   - enum action + "other" -&gt; a closed set that's still extensible</span>
+<span class="cm">#   - policy_citation       -&gt; provenance (which doc, as of which date) rides along</span>
+<span class="cm"># The thing the schema CANNOT guarantee — that amount_usd equals a real order</span>
+<span class="hl"><span class="cm"># total — is exactly what apply_gate() checks in code. Syntax vs semantics.</span></span>
+<span class="kw">def</span> <span class="fn">final_text</span>(resp):
+    <span class="kw">return</span> next(b.text <span class="kw">for</span> b <span class="kw">in</span> resp.content <span class="kw">if</span> b.type == <span class="st">"text"</span>)</code></pre></div>
+    <div class="callout note">
+      <div class="h">ℹ️ Syntax vs semantics</div>
+      <p>A strict schema guarantees the arguments <b>parse</b> — but not that they're correct. <code>nullable amount_usd</code> lets the model return <code>null</code> instead of fabricating a number; the <code>enum</code> with an <code>"other"</code> escape hatch is a closed-but-extensible set; <code>policy_citation</code> carries provenance (which doc, as of which date) with the decision. The one thing the schema can't check — that the amount matches a real order — is exactly what <a href="#gate">apply_gate</a> enforces.</p>
+    </div>
+    <div>
+      <span class="pill">D4 · structured output</span>
+      <span class="pill">D4 · nullable prevents fabrication</span>
+      <span class="pill">D4 · enum "other"</span>
+      <span class="pill">D5 · provenance</span>
+      <span class="pill">D4 · syntax vs semantics</span>
+    </div>
+  </div>
+
+  <!-- ============ CARD 9 — SUBAGENT ============ -->
+  <div class="card">
+    <h2><span class="n">9</span>The investigator subagent</h2>
+    <p class="lead">A subagent is just a nested loop with its own fresh <code>messages[]</code>, its own read-only tools, and only the context you hand it. <code>subagent.py</code>:</p>
+    <div class="codewrap solo" id="subagent"><pre><code><span class="cm"># subagent.py — a "subagent" is just a NESTED agent loop with its OWN fresh</span>
+<span class="cm"># messages[], its OWN read-only tools, and only the context you hand it in the</span>
+<span class="cm"># prompt. It cannot see the parent conversation (isolated context / hub-and-spoke).</span>
+<span class="kw">import</span> anthropic
+<span class="kw">from</span> tools <span class="kw">import</span> INVESTIGATOR_TOOLS
+
+client = anthropic.Anthropic()
+
+INVESTIGATOR_SYSTEM = (
+    <span class="st">"You investigate one customer's account history and return a 3-line summary: "</span>
+    <span class="st">"lifetime value, prior refunds, and any abuse flags. You have read-only tools "</span>
+    <span class="st">"and cannot issue refunds or resolve tickets."</span>
+)
+
+<span class="kw">def</span> <span class="fn">investigate_account</span>(customer_id):
+    <span class="st">"""Runs to completion in isolation and returns a STRUCTURED result — including</span>
+<span class="st">    a structured FAILURE the coordinator can act on, never a bare 'it broke'."""</span>
+    <span class="hl">messages = [{<span class="st">"role"</span>: <span class="st">"user"</span>,</span>
+                 <span class="st">"content"</span>: <span class="st">f"Investigate account history for customer {customer_id}."</span>}]
+    <span class="kw">try</span>:
+        <span class="kw">for</span> _ <span class="kw">in</span> range(<span class="nm">6</span>):                              <span class="cm"># local bound on this worker</span>
+            resp = client.messages.create(
+                model=<span class="st">"claude-opus-4-8"</span>, max_tokens=<span class="nm">4000</span>,
+                system=INVESTIGATOR_SYSTEM, tools=INVESTIGATOR_TOOLS, messages=messages,
+            )
+            <span class="kw">if</span> resp.stop_reason == <span class="st">"end_turn"</span>:
+                <span class="kw">return</span> {<span class="st">"ok"</span>: <span class="kw">True</span>, <span class="st">"summary"</span>: next(b.text <span class="kw">for</span> b <span class="kw">in</span> resp.content <span class="kw">if</span> b.type == <span class="st">"text"</span>)}
+            messages.append({<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>: resp.content})
+            messages.append({<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: run_tools(resp)})
+        <span class="kw">return</span> {<span class="st">"ok"</span>: <span class="kw">False</span>, <span class="st">"failure_type"</span>: <span class="st">"no_progress"</span>,
+                <span class="st">"attempted"</span>: <span class="st">"account history lookup"</span>, <span class="st">"partial"</span>: <span class="kw">None</span>,
+                <span class="st">"alternatives"</span>: [<span class="st">"proceed on order data alone"</span>, <span class="st">"escalate to a human"</span>]}
+    <span class="kw">except</span> anthropic.APIStatusError <span class="kw">as</span> e:
+        <span class="kw">return</span> {<span class="st">"ok"</span>: <span class="kw">False</span>,
+                <span class="st">"failure_type"</span>: <span class="st">"transient"</span> <span class="kw">if</span> e.status_code &gt;= <span class="nm">500</span> <span class="kw">else</span> <span class="st">"permission"</span>,
+                <span class="st">"attempted"</span>: <span class="st">"account history lookup"</span>, <span class="st">"partial"</span>: <span class="kw">None</span>,
+                <span class="st">"alternatives"</span>: [<span class="st">"retry once"</span>, <span class="st">"proceed without history"</span>]}
+
+<span class="cm"># Back in the coordinator: local recovery for transient failures, and one failed</span>
+<span class="cm"># branch NEVER kills the whole ticket.</span>
+<span class="kw">def</span> <span class="fn">run_subagent</span>(block, facts):
+    sub = investigate_account(facts[<span class="st">"customer_id"</span>])
+    <span class="kw">if</span> <span class="kw">not</span> sub[<span class="st">"ok"</span>] <span class="kw">and</span> sub[<span class="st">"failure_type"</span>] == <span class="st">"transient"</span>:
+        sub = investigate_account(facts[<span class="st">"customer_id"</span>])         <span class="cm"># one local retry</span>
+    content = sub[<span class="st">"summary"</span>] <span class="kw">if</span> sub[<span class="st">"ok"</span>] <span class="kw">else</span> \
+        <span class="st">f"history unavailable ({sub['failure_type']}); alternatives: {sub['alternatives']}"</span>
+    <span class="kw">return</span> {<span class="st">"type"</span>: <span class="st">"tool_result"</span>, <span class="st">"tool_use_id"</span>: block.id, <span class="st">"content"</span>: content}</code></pre></div>
+    <div class="callout key">
+      <div class="h">🔑 A subagent is a nested loop with isolated context</div>
+      <p>A subagent is just a NESTED loop with its own fresh <code>messages[]</code>, scoped read-only tools, and only the context you pass in — isolated context (hub-and-spoke). It returns a STRUCTURED result, including a structured FAILURE the coordinator can act on; transient failures get one local retry, and one failed branch never kills the ticket.</p>
+    </div>
+    <div>
+      <span class="pill">D1 · subagent (Task pattern)</span>
+      <span class="pill">D1 · isolated context</span>
+      <span class="pill">D5 · structured error propagation</span>
+      <span class="pill">D5 · local recovery</span>
+      <span class="pill">P2 · root cause over symptom</span>
+      <span class="pill">P5 · least privilege</span>
+    </div>
+  </div>
+
+  <!-- ============ CARD 10 — MCP ============ -->
+  <div class="card">
+    <h2><span class="n">10</span>MCP policy knowledge base</h2>
+    <p class="lead">The refund policy lives behind an MCP server — committed, shared, and credentialed via the environment, never inline. <code>.mcp.json</code>:</p>
+    <div class="codewrap solo" id="mcp"><pre><code><span class="cm">// .mcp.json — the refund-policy knowledge base, committed &amp; shared.</span>
+<span class="cm">// Prefer an existing/community MCP server for a standard integration; build</span>
+<span class="cm">// custom only for team-specific needs. Secrets come from the env, never inline.</span>
+{
+  <span class="st">"mcpServers"</span>: {
+    <span class="st">"policy-kb"</span>: {
+      <span class="st">"type"</span>: <span class="st">"http"</span>,
+      <span class="st">"url"</span>: <span class="st">"https://policy-kb.internal/mcp"</span>,
+      <span class="hl"><span class="st">"headers"</span>: { <span class="st">"Authorization"</span>: <span class="st">"Bearer ${POLICY_KB_TOKEN}"</span> }</span>
+    }
+  }
+}
+<span class="cm">// The KB exposes RESOURCES (a catalog of policy docs) as well as a search tool.</span>
+<span class="cm">// The resource lets the model pull the right policy in ONE read instead of</span>
+<span class="cm">// probing with many exploratory tool calls — and the doc_id/as_of_date it</span>
+<span class="cm">// returns is what each resolution cites (provenance).</span></code></pre></div>
+    <div class="callout note">
+      <div class="h">ℹ️ Resources, community servers, env secrets</div>
+      <p>Resources (the policy catalog) let the model pull the right doc in one read instead of many exploratory tool calls; prefer a community server for standard integrations; secrets via <code>${ENV_VAR}</code>, never inline. The citation recorded in each resolution points back to a doc the KB served (provenance).</p>
+    </div>
+    <div>
+      <span class="pill">D2 · MCP config + ${ENV_VAR}</span>
+      <span class="pill">D2 · resources reduce tool calls</span>
+      <span class="pill">D2 · community vs custom</span>
+      <span class="pill">D5 · provenance</span>
+    </div>
+  </div>
+
+  <!-- ============ CARD 11 — BATCH + REVIEW ============ -->
+  <div class="card">
+    <h2><span class="n">11</span>Nightly bulk triage — and why the live agent is sync</h2>
+    <p class="lead">Overnight, low-priority backlog gets classified by the Message Batches API. The reason that's a <b>different</b> tool than the live loop is the whole point. <code>batch_triage.py</code>:</p>
+    <div class="codewrap solo" id="batch"><pre><code><span class="cm"># batch_triage.py — overnight, classify the day's backlog of LOW-priority</span>
+<span class="cm"># tickets. Latency-tolerant + cost-sensitive =&gt; Message Batches API: 50%</span>
+<span class="cm"># cheaper, up to 24h, NO latency SLA, NO multi-turn tool calling. That last</span>
+<span class="cm"># point is exactly why the LIVE agent is a synchronous loop, not a batch.</span>
+<span class="kw">import</span> anthropic
+<span class="kw">from</span> anthropic.types.message_create_params <span class="kw">import</span> MessageCreateParamsNonStreaming
+<span class="kw">from</span> anthropic.types.messages.batch_create_params <span class="kw">import</span> Request
+
+client = anthropic.Anthropic()
+
+<span class="kw">def</span> <span class="fn">submit_nightly</span>(tickets):
+    batch = client.messages.batches.create(requests=[
+        Request(custom_id=<span class="st">f"ticket-{t['id']}"</span>,              <span class="cm"># correlate each result back</span>
+                params=MessageCreateParamsNonStreaming(
+                    model=<span class="st">"claude-opus-4-8"</span>, max_tokens=<span class="nm">512</span>,
+                    messages=[{<span class="st">"role"</span>: <span class="st">"user"</span>,
+                               <span class="st">"content"</span>: <span class="st">f"Classify priority and category: {t['text']}"</span>}]))
+        <span class="kw">for</span> t <span class="kw">in</span> tickets
+    ])
+    <span class="hl"><span class="kw">return</span> batch.id     <span class="cm"># poll batches.retrieve(id) until processing_status == "ended"</span></span></code></pre></div>
+    <div class="callout key">
+      <div class="h">🔑 Match the API to the problem</div>
+      <p>Latency-tolerant overnight work → Message Batches API: 50% cheaper, ≤24h, NO latency SLA, NO multi-turn tool calling. That last point is exactly why the live agent above is a synchronous loop, not a batch.</p>
+    </div>
+
+    <h3>Human review — <code>review.py</code></h3>
+    <p class="lead">Every decision is logged for human audit. Sampling is field-level and stratified by segment — because an aggregate 97% can hide a bad segment.</p>
+    <div class="codewrap solo" id="review"><pre><code><span class="cm"># review.py — every decision is logged for human audit. Sampling is FIELD-LEVEL</span>
+<span class="cm"># and stratified BY action/reason, calibrated on a labeled set — because an</span>
+<span class="cm"># aggregate "97% correct" can hide one bad segment. The model's self-reported</span>
+<span class="cm"># confidence is NOT used as the quality signal.</span>
+audit_log = []
+
+<span class="kw">def</span> <span class="fn">record_decision</span>(resolution, facts):
+    <span class="hl">audit_log.append({</span>
+        <span class="st">"customer_id"</span>: facts[<span class="st">"customer_id"</span>],
+        <span class="st">"action"</span>: resolution[<span class="st">"action"</span>],
+        <span class="st">"amount_usd"</span>: resolution.get(<span class="st">"amount_usd"</span>),
+        <span class="st">"policy"</span>: resolution[<span class="st">"policy_citation"</span>],     <span class="cm"># provenance stays attached</span>
+        <span class="st">"verified"</span>: facts[<span class="st">"verified"</span>],
+    })</code></pre></div>
+    <p class="lead">Sampling is <b>field-level</b> and <b>stratified by segment</b> because an aggregate 97% can hide a bad segment, and self-reported confidence is not the quality signal.</p>
+    <div>
+      <span class="pill">D4 · Message Batches API</span>
+      <span class="pill">D4 · batch vs sync</span>
+      <span class="pill">D5 · human review</span>
+      <span class="pill">D5 · provenance</span>
+      <span class="pill">P4 · match the API to the problem</span>
+    </div>
+  </div>
+
+  <!-- ============ CARD 12 — CLAUDE CODE LAYER ============ -->
+  <div class="card">
+    <h2><span class="n">12</span>How the team builds &amp; ships this agent with Claude Code</h2>
+    <p class="lead">Everything above is the <b>API layer</b> — the agent <i>running</i>. This card is the <b>Claude Code layer</b> — the team <i>building</i> it. Different floor of the building entirely; don't confuse the two on the exam.</p>
+
+    <div id="ship">
+    <p class="lead" style="margin-top:8px">A committed project <code>CLAUDE.md</code> — every teammate gets it (a user-level <code>~/.claude/CLAUDE.md</code> would NOT be shared). It pulls in a rules file with an <code>@import</code>:</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># Refund Agent — project rules</span>
+<span class="hl">@import ./.claude/rules/tool-schemas.md</span>
+- All tool schemas live in tools.py; keep descriptions prescriptive (say WHEN to use a tool).
+- Never let the investigator subagent get write/refund tools.</code></pre></div>
+
+    <p class="lead">A path-specific rule that loads <b>only</b> when editing tool files — beats a per-directory <code>CLAUDE.md</code>. The YAML frontmatter <code>paths</code> glob is the trigger:</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># .claude/rules/tool-schemas.md</span>
+---
+<span class="hl">paths: [<span class="st">"tools.py"</span>, <span class="st">"**/schemas/*.json"</span>]</span>
+---
+When editing a tool schema: rich description (inputs, example, when-to-use vs when-not),
+mark uncertain fields nullable, use enums with an <span class="st">"other"</span> escape hatch.</code></pre></div>
+
+    <p class="lead">A shared slash command (project dir = team command; <code>~/.claude/commands/</code> would be personal):</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># .claude/commands/review.md</span>
+Review the staged diff for correctness bugs. Flag only when the claimed behavior
+contradicts the actual code. Report every finding with a confidence and severity;
+filtering happens downstream.</code></pre></div>
+
+    <p class="lead">An on-demand skill whose verbose output is isolated with <code>context: fork</code>:</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># .claude/skills/refund-policy/SKILL.md</span>
+---
+name: refund-policy
+description: Look up and quote the current refund policy for a scenario.
+<span class="hl">context: fork</span>
+allowed-tools: [<span class="st">"Read"</span>, <span class="st">"Grep"</span>]
+argument-hint: <span class="st">"&lt;scenario&gt;"</span>
+---</code></pre></div>
+
+    <p class="lead">And the CI line — headless, parseable, run as an <b>independent</b> instance (beats self-review):</p>
+    <div class="codewrap solo"><pre><code><span class="cm"># -p / --print makes it non-interactive (fixes the "job hangs" failure)</span>
+<span class="hl">claude -p <span class="st">"/review the diff"</span> --output-format json --json-schema findings.schema.json</span></code></pre></div>
+    </div>
+
+    <div class="callout warn">
+      <div class="h">⚠️ Distractors to reject</div>
+      <p>There is no <code>CLAUDE_HEADLESS</code> env var, no <code>--batch</code> flag, and no <code>commands</code> array inside a <code>.claude/config.json</code>. Headless mode is the <code>-p</code>/<code>--print</code> flag; commands and skills are files on disk. Flags are version-sensitive — confirm against the CLI you're running.</p>
+    </div>
+    <div>
+      <span class="pill">D3 · CLAUDE.md hierarchy</span>
+      <span class="pill">D3 · path-specific rules</span>
+      <span class="pill">D3 · shared command</span>
+      <span class="pill">D3 · skill context: fork</span>
+      <span class="pill">D3 · headless CI</span>
+      <span class="pill">D3 · independent review</span>
+    </div>
+  </div>
+
+  <!-- ============ CARD 13 — PRINCIPLES ============ -->
+  <div class="card">
+    <h2><span class="n">13</span>The six decision principles, located in this app</h2>
+    <p class="lead">The principles aren't abstractions — each one is a specific line of this codebase.</p>
+    <table>
+      <thead><tr><th>Principle</th><th>Where it shows up</th></tr></thead>
+      <tbody>
+        <tr><td><b>1 · Deterministic over probabilistic</b></td><td>the must-hold rule lives in code → <a href="#gate">apply_gate</a></td></tr>
+        <tr><td><b>2 · Root cause over symptom</b></td><td>fix the coordinator's decomposition, not the workers → <a href="#subagent">subagent.py</a></td></tr>
+        <tr><td><b>3 · Proportionate first step</b></td><td>rich tool descriptions before classifiers → <a href="#tools">tools.py</a></td></tr>
+        <tr><td><b>4 · Match the tool/API to the problem</b></td><td>sync live vs batch nightly; a bigger window ≠ attention → <a href="#batch">batch_triage.py</a></td></tr>
+        <tr><td><b>5 · Least privilege</b></td><td>read-only <code>INVESTIGATOR_TOOLS</code> subset → <a href="#subagent">subagent.py</a></td></tr>
+        <tr><td><b>6 · Sentiment &amp; self-rated confidence are unreliable</b></td><td>escalation criteria reject both → <a href="#prompt">the system prompt</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============ CARD 14 — OFFICIAL SCENARIOS ============ -->
+  <div class="card">
+    <h2><span class="n">14</span>The six official exam scenarios → where they live here</h2>
+    <p class="lead">The exam frames its content around six scenarios. Every one of them is somewhere in this single app.</p>
+    <table>
+      <thead><tr><th>Official scenario</th><th>Where it lives here</th></tr></thead>
+      <tbody>
+        <tr><td><b>Customer Support Agent</b></td><td>the whole harness → <a href="#loop">#loop</a>, <a href="#gate">#gate</a></td></tr>
+        <tr><td><b>Multi-Agent Research</b></td><td>coordinator / worker → <a href="#subagent">#subagent</a></td></tr>
+        <tr><td><b>Developer Productivity</b></td><td>the Claude Code workflow → <a href="#ship">#ship</a></td></tr>
+        <tr><td><b>Code Generation / CI</b></td><td>headless review + batch → <a href="#ship">#ship</a>, <a href="#batch">#batch</a></td></tr>
+        <tr><td><b>Structured Data Extraction</b></td><td>the strict resolution schema → <a href="#structured">#structured</a></td></tr>
+        <tr><td><b>Context / Reliability</b></td><td>threads through → <a href="#context">#context</a>, <a href="#subagent">#subagent</a></td></tr>
+      </tbody>
+    </table>
+    <div class="callout key">
+      <div class="h">🔑 The whole exam, in one app</div>
+      <p>If you can point to where each of these lives in one app, you understand the exam.</p>
+    </div>
+  </div>
+
+  <div style="text-align:center;margin-top:24px">
+    <a href="index.html"><span class="pill">↩ index.html</span></a>
+    <a href="deep-dives.html"><span class="pill">deep-dives.html</span></a>
+    <a href="stop-reason.html"><span class="pill">stop-reason deep dive</span></a>
+    <a href="hooks-gates.html"><span class="pill">hooks &amp; gates deep dive</span></a>
+    <a href="structured-output.html"><span class="pill">structured-output deep dive</span></a>
+  </div>
+
+  <div class="footer">CCA Foundations capstone — one refund-support agent, all five domains and the six decision principles.</div>
+</div>
+
+<script>
+(function () {
+  var chips = document.querySelectorAll('.btnrow .chip');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#cmap tbody tr'));
+  var countEl = document.getElementById('cmapcount');
+
+  function apply(dom) {
+    var shown = 0;
+    rows.forEach(function (tr) {
+      var match = (dom === 'all') || (tr.getAttribute('data-dom') === dom);
+      tr.classList.toggle('hidden', !match);
+      if (match) shown++;
+    });
+    countEl.textContent = 'Showing ' + shown + ' of ' + rows.length + ' concepts';
+  }
+
+  chips.forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      chips.forEach(function (c) { c.classList.remove('active'); });
+      chip.classList.add('active');
+      apply(chip.getAttribute('data-dom'));
+    });
+  });
+
+  apply('all');
+})();
+</script>
+</body>
+</html>
